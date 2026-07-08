@@ -109,7 +109,11 @@ body::after {
 .card > * { position: relative; z-index: 1; }
 
 /* ── shell ─────────────────────────────────────────────────────────────── */
-.shell { display: flex; height: 100vh; width: 100%; overflow: hidden; }
+.shell {
+  display: flex; width: 100%; overflow: hidden;
+  height: 100vh; height: 100dvh; /* dvh keeps it stable in iPad standalone */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
 
 .sidebar {
   width: 268px; flex: none; position: relative; z-index: 30;
@@ -457,6 +461,26 @@ body::after {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 90; padding: 11px 18px; border-radius: 16px; background: rgba(15, 30, 60, .82); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); color: #fff; font-size: 13px; font-weight: 600; box-shadow: 0 12px 30px -10px rgba(0, 0, 0, .5); animation: sheetIn .24s ease; }
+
+/* Comfortable touch targets on iPad / touch devices (no effect with a mouse) */
+@media (pointer: coarse) {
+  .nav-item, .btn-record, .btn-save, .btn-primary, .today-btn, .sort-btn { min-height: 44px; }
+  .chip { padding: 11px 16px; }
+  .gridopt { padding: 13px 8px; }
+  .seg button, .seg-view button { padding-top: 11px; padding-bottom: 11px; }
+  .round-btn { width: 42px; height: 42px; }
+  .icon-btn { width: 36px; height: 36px; }
+  .news-x { width: 28px; height: 28px; }
+  .cell { min-height: 66px; }
+  .day-chip { padding: 13px 0; }
+  .swatch { width: 40px; height: 40px; }
+  .search-input { padding-top: 16px; padding-bottom: 16px; }
+}
+
+/* iPad portrait: a touch-narrower rail so the calendar keeps room */
+@media (min-width: 721px) and (max-width: 900px) {
+  .sidebar { width: 236px; }
+}
 
 @media (max-width: 720px) {
   /* Turn the rail into a horizontal top bar so nav, asset switch, and the
