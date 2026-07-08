@@ -1,14 +1,13 @@
 /*
- * app.js — GC Trade Journal.
- * A faithful vanilla port of the Claude Design handoff "Trade Journal.dc.html".
- * The prototype was written in a reactive template DSL; this recreates the same
- * visual output and behaviour with plain state -> render, event delegation, and
- * the exact inline styles the design specifies. Data persists to localStorage.
+ * app.js — GC Trade Journal (Blue Liquid Glass edition).
+ * Ported from the Claude Design handoff, reskinned to an iOS-26 liquid-glass
+ * system and wired to a swappable Store (localStorage or Supabase, no login).
+ * Logic, seeded data and Thai formatting are unchanged; the view is class-based
+ * and data loading is async.
  */
 (function () {
   'use strict';
 
-  // ── static config (ported verbatim) ──────────────────────────────────────
   var PROPS = { resultScheme: 'blue-orange', weekStart: 'sun', showWeekends: true, defaultPeriod: 'month' };
   var TODAY = '2026-07-07';
   var MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
@@ -26,9 +25,7 @@
     result: [{ v: 'correct', l: 'ถูก' }, { v: 'wrong', l: 'ผิด' }, { v: 'pending', l: 'รอสรุป' }]
   };
   var ASSET_COLORS = [['#D4A017', '#FBD34D'], ['#F7931A', '#FDBE5B'], ['#007AFF', '#5AC8FA'], ['#34C759', '#8CE3A3'], ['#AF52DE', '#D08BF0'], ['#FF3B30', '#FF8A82'], ['#5856D6', '#9D9BF0'], ['#00B8A9', '#5FE0D3']];
-  var STORE = 'gcjournal_v9';
 
-  // ── tiny utils ────────────────────────────────────────────────────────────
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
   function key(y, m, d) { return y + '-' + pad(m + 1) + '-' + pad(d); }
   function keyOf(dt) { return key(dt.getFullYear(), dt.getMonth(), dt.getDate()); }
@@ -43,23 +40,11 @@
   function fmtDowFull(k) { return DOW_FULL[parse(k).getDay()]; }
   function optLabel(k, v) { var o = OPT[k].find(function (x) { return x.v === v; }); return o ? o.l : '–'; }
   function biasMeta(v) { var o = OPT.bias.find(function (x) { return x.v === v; }) || { l: '-' }; var up = (v === 'buy' || v === 'sw_up'), down = (v === 'sell' || v === 'sw_down'); return { label: o.l, color: up ? '#34C759' : (down ? '#FF3B30' : '#8E8E93'), arrow: up ? '↑' : (down ? '↓' : '→') }; }
-  function resultMeta(v) { var C = resultColor('correct'), W = resultColor('wrong'); if (v === 'correct') return { label: 'Bias ถูก', color: C, soft: hexToRgba(C, .12) }; if (v === 'wrong') return { label: 'Bias ผิด', color: W, soft: hexToRgba(W, .12) }; return { label: 'รอสรุป', color: '#8E8E93', soft: 'rgba(120,120,128,.14)' }; }
-
-  // ── style generators (ported verbatim) ───────────────────────────────────
-  function badgeStyleOf(colors, size, fs) { colors = colors || ['#8E8E93', '#B0B0B5']; return 'width:' + size + 'px;height:' + size + 'px;border-radius:' + Math.round(size * 0.3) + 'px;background:linear-gradient(155deg,' + colors[1] + ',' + colors[0] + ');display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;flex:none;font-size:' + fs + 'px;text-shadow:0 1px 2px rgba(0,0,0,.28);letter-spacing:-.02em;'; }
+  function resultMeta(v) { var C = resultColor('correct'), W = resultColor('wrong'); if (v === 'correct') return { label: 'Bias ถูก', color: C, soft: hexToRgba(C, .14) }; if (v === 'wrong') return { label: 'Bias ผิด', color: W, soft: hexToRgba(W, .14) }; return { label: 'รอสรุป', color: '#8E8E93', soft: 'rgba(120,140,180,.16)' }; }
+  function badgeStyle(colors, size, fs) { colors = colors || ['#8E8E93', '#B0B0B5']; return 'width:' + size + 'px;height:' + size + 'px;border-radius:' + Math.round(size * 0.3) + 'px;font-size:' + fs + 'px;background:linear-gradient(155deg,' + colors[1] + ',' + colors[0] + ');'; }
   function tradingDaysLabel(td) { if (!td || !td.length) return '—'; if (td.length === 7) return 'ทุกวัน · 24/7'; var wk = [1, 2, 3, 4, 5]; var isWk = td.length === 5 && wk.every(function (x) { return td.indexOf(x) > -1; }); if (isWk) return 'จันทร์–ศุกร์'; return td.slice().sort(function (a, b) { return a - b; }).map(function (i) { return DOW[i]; }).join(' '); }
-  function dayChipStyle(on) { return 'flex:1;padding:11px 0;border-radius:11px;border:1px solid ' + (on ? '#007AFF' : 'rgba(60,60,67,.16)') + ';background:' + (on ? '#007AFF' : '#fff') + ';color:' + (on ? '#fff' : '#3c3c43') + ';font-weight:' + (on ? '700' : '500') + ';font-size:14px;cursor:pointer;font-family:inherit;transition:all .12s;'; }
-  function colorSwatchStyle(c, on) { return 'width:34px;height:34px;border-radius:50%;border:none;background:linear-gradient(155deg,' + c[1] + ',' + c[0] + ');cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:' + (on ? '0 0 0 3px #fff, 0 0 0 5px ' + c[0] : '0 1px 3px rgba(0,0,0,.15)') + ';'; }
-  function segFormStyle(a) { return 'flex:1;padding:9px 6px;border:none;border-radius:8px;font-family:inherit;font-size:14px;font-weight:' + (a ? '600' : '500') + ';cursor:pointer;transition:all .15s;white-space:nowrap;background:' + (a ? '#007AFF' : 'transparent') + ';color:' + (a ? '#fff' : '#1c1c1e') + ';box-shadow:' + (a ? '0 1px 2px rgba(0,122,255,.35)' : 'none') + ';'; }
-  function gridOptStyle(a) { return 'padding:10px 8px;border:1px solid ' + (a ? '#007AFF' : 'rgba(60,60,67,.14)') + ';border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:' + (a ? '600' : '500') + ';cursor:pointer;transition:all .15s;background:' + (a ? '#007AFF' : '#fff') + ';color:' + (a ? '#fff' : '#1c1c1e') + ';text-align:center;line-height:1.25;'; }
-  function segViewStyle(a) { return 'padding:6px 16px;border:none;border-radius:7px;font-family:inherit;font-size:14px;font-weight:' + (a ? '600' : '500') + ';cursor:pointer;transition:all .2s;white-space:nowrap;background:' + (a ? '#fff' : 'transparent') + ';color:' + (a ? '#1c1c1e' : 'rgba(60,60,67,.6)') + ';box-shadow:' + (a ? '0 1px 3px rgba(0,0,0,.12)' : 'none') + ';'; }
-  function chipStyle(a) { return 'padding:8px 15px;border-radius:19px;font-family:inherit;font-size:14px;font-weight:' + (a ? '600' : '500') + ';cursor:pointer;transition:all .15s;white-space:nowrap;border:1px solid ' + (a ? '#007AFF' : 'rgba(60,60,67,.15)') + ';background:' + (a ? '#007AFF' : '#fff') + ';color:' + (a ? '#fff' : '#3c3c43') + ';'; }
-  function navStyle(a) { return 'display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:12px;border:none;margin-bottom:3px;background:' + (a ? 'rgba(0,122,255,.12)' : 'transparent') + ';color:' + (a ? '#007AFF' : '#1c1c1e') + ';font-size:15px;font-weight:' + (a ? '600' : '500') + ';cursor:pointer;text-align:left;font-family:inherit;transition:background .15s;width:100%;'; }
-  function toggleStyle(on) { return 'width:51px;height:31px;border-radius:16px;border:none;padding:2px;cursor:pointer;display:flex;align-items:center;transition:background .2s;background:' + (on ? '#34C759' : 'rgba(120,120,128,.24)') + ';justify-content:' + (on ? 'flex-end' : 'flex-start') + ';'; }
-  function knobStyle() { return 'width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.2);display:block;'; }
-  function weekCardStyle(isToday) { return 'flex:0 0 202px;min-height:232px;display:flex;flex-direction:column;text-align:left;padding:16px;border-radius:18px;background:#fff;border:' + (isToday ? '2px solid #007AFF' : '1px solid rgba(60,60,67,.1)') + ';box-shadow:0 1px 3px rgba(0,0,0,.05);cursor:pointer;font-family:inherit;'; }
 
-  // ── seeded sample data (ported verbatim so it matches the mockups) ────────
+  // ── seeded sample data (unchanged so figures match the mockups) ───────────
   function rng(seed) { var a = seed; return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
   function genRecords(start, end, tradingDays, seedNum) {
     var r = rng(seedNum);
@@ -93,49 +78,41 @@
     var btc = genRecords(new Date(2026, 4, 4, 12), new Date(2026, 6, 7, 12), [0, 1, 2, 3, 4, 5, 6], 220466);
     return { assets: [{ id: 'gc', name: 'GC', sub: 'ทองคำฟิวเจอร์', badge: 'GC', colors: ['#D4A017', '#FBD34D'], tradingDays: [1, 2, 3, 4, 5] }, { id: 'btc', name: 'BTC', sub: 'Bitcoin · 24/7', badge: '฿', colors: ['#F7931A', '#FDBE5B'], tradingDays: [0, 1, 2, 3, 4, 5, 6] }], activeAssetId: 'gc', records: { gc: gc, btc: btc } };
   }
-  function loadData() {
-    try { var s = localStorage.getItem(STORE); if (s) { var p = JSON.parse(s); if (p && p.assets && p.records && p.activeAssetId) return p; } } catch (e) {}
-    var seeded = seedAll(); try { localStorage.setItem(STORE, JSON.stringify(seeded)); } catch (e) {} return seeded;
-  }
-  function saveData(blob) { try { localStorage.setItem(STORE, JSON.stringify(blob)); } catch (e) {} }
 
-  // ── application state ─────────────────────────────────────────────────────
-  var data = loadData();
+  // ── state ─────────────────────────────────────────────────────────────────
   var S = {
-    page: 'overview', returnPage: 'overview', period: (PROPS.defaultPeriod === 'week' ? 'month' : PROPS.defaultPeriod) || 'month',
+    page: 'overview', returnPage: 'overview', period: 'month',
     curY: 2026, curM: 6, focusKey: TODAY,
-    assets: data.assets, activeAssetId: data.activeAssetId, records: data.records,
+    assets: [], activeAssetId: null, records: {},
     assetMenuOpen: false, assetEditor: null,
     draft: null, sheetKey: null, sheetIsNew: false, newsInput: '',
     search: '', sortDir: 'desc', filtersOpen: false,
-    filters: { result: [], bias: [], news: [], pcr: [], add: [], wd: [], magnet: [], iv: [] }
+    filters: { result: [], bias: [], news: [], pcr: [], add: [], wd: [], magnet: [], iv: [] },
+    ready: false
   };
-
   function activeAsset() { for (var i = 0; i < S.assets.length; i++) { if (S.assets[i].id === S.activeAssetId) return S.assets[i]; } return S.assets[0]; }
   function findAsset(id) { for (var i = 0; i < S.assets.length; i++) { if (S.assets[i].id === id) return S.assets[i]; } return null; }
   function recs() { return S.records[S.activeAssetId] || {}; }
   function isTradingDow(dow) { return activeAsset().tradingDays.indexOf(dow) > -1; }
+  function blob() { return { assets: S.assets, activeAssetId: S.activeAssetId, records: S.records }; }
+  function mirror() { window.Store.mirror(blob()); }
 
-  // ── calendar + stats (ported) ─────────────────────────────────────────────
-  function weekdayHeaders() { var ws = weekStartNum(); var order = ws === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6]; return order.map(function (i) { return { l: DOW[i], style: 'text-align:center;font-size:12px;font-weight:600;padding-bottom:2px;color:' + ((i === 0 || i === 6) ? 'rgba(60,60,67,.32)' : 'rgba(60,60,67,.55)') + ';' }; }); }
+  // ── calendar + stats ───────────────────────────────────────────────────────
   function cellData(o) {
-    var C = resultColor('correct'), W = resultColor('wrong');
-    var blank = { dayNum: '', k: o.k, clickable: false, style: 'aspect-ratio:1/1;min-height:60px;border-radius:14px;border:1px solid transparent;background:transparent;', numStyle: 'display:none', badge: '', badgeStyle: 'display:none', dotStyle: 'display:none' };
+    var blank = { dayNum: '', k: o.k, clickable: false, cls: 'blank', dot: '', badge: '', badgeCls: '' };
     if (!o.inMonth) return blank;
     if (o.weekend && !showWeekends()) return blank;
-    var bg = '#fff', border = '1px solid rgba(60,60,67,.09)', numColor = '#1c1c1e', numWeight = '600', cursor = o.clickable ? 'pointer' : 'default';
-    var badge = '', badgeColor = '', dot = 'none';
-    if (o.weekend) { bg = 'rgba(120,120,128,.045)'; border = '1px solid transparent'; numColor = 'rgba(60,60,67,.28)'; numWeight = '500'; }
-    if (!o.weekend && o.rec) {
-      if (o.rec.result === 'correct') { bg = hexToRgba(C, .1); border = '1px solid ' + hexToRgba(C, .28); badge = 'ถูก'; badgeColor = C; }
-      else if (o.rec.result === 'wrong') { bg = hexToRgba(W, .12); border = '1px solid ' + hexToRgba(W, .3); badge = 'ผิด'; badgeColor = W; }
-      else { bg = '#fff'; border = '1px dashed rgba(60,60,67,.3)'; badge = 'รอ'; badgeColor = 'rgba(60,60,67,.45)'; }
+    var cls = '', dot = '', badge = '', badgeCls = '';
+    if (o.weekend) cls = 'we';
+    else if (o.rec) {
+      if (o.rec.result === 'correct') { cls = 'correct'; badge = 'ถูก'; badgeCls = 'correct'; }
+      else if (o.rec.result === 'wrong') { cls = 'wrong'; badge = 'ผิด'; badgeCls = 'wrong'; }
+      else { cls = 'pending'; badge = 'รอ'; badgeCls = 'pending'; }
       var up = (o.rec.bias === 'buy' || o.rec.bias === 'sw_up'), down = (o.rec.bias === 'sell' || o.rec.bias === 'sw_down');
-      dot = up ? '#34C759' : (down ? '#FF3B30' : '#8E8E93');
+      dot = up ? 'up' : (down ? 'down' : '');
     }
-    var base = 'position:relative;aspect-ratio:1/1;min-height:60px;border-radius:14px;padding:8px 9px;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;text-align:left;font-family:inherit;background:' + bg + ';border:' + border + ';cursor:' + cursor + ';';
-    if (o.k === TODAY) base += 'box-shadow:0 0 0 2px #007AFF inset;';
-    return { dayNum: o.dayNum, k: o.k, clickable: !!o.clickable, style: base, numStyle: 'font-size:15px;font-weight:' + numWeight + ';color:' + numColor + ';line-height:1;', badge: badge, badgeStyle: badge ? ('font-size:11px;font-weight:700;color:' + badgeColor + ';') : 'display:none', dotStyle: dot === 'none' ? 'display:none' : ('position:absolute;top:9px;right:9px;width:8px;height:8px;border-radius:50%;background:' + dot + ';') };
+    if (o.k === TODAY) cls += ' today';
+    return { dayNum: o.dayNum, k: o.k, clickable: !!o.clickable, cls: cls.trim(), dot: dot, badge: badge, badgeCls: badgeCls };
   }
   function monthWeeks(y, m) {
     var ws = weekStartNum(); var first = new Date(y, m, 1, 12); var off = (first.getDay() - ws + 7) % 7; var dim = new Date(y, m + 1, 0).getDate(); var rows = Math.ceil((off + dim) / 7); var weeks = []; var rec = recs();
@@ -143,13 +120,12 @@
     return weeks;
   }
   function microCell(o) {
-    if (!o.inMonth) return { dayNum: '', k: o.k, clickable: false, style: 'width:100%;aspect-ratio:1/1;border-radius:5px;background:transparent;border:none;', txtStyle: 'display:none' };
-    var C = resultColor('correct'), W = resultColor('wrong'); var bg = 'transparent', col = 'rgba(60,60,67,.45)';
-    if (!o.weekend && o.rec) { if (o.rec.result === 'correct') { bg = C; col = '#fff'; } else if (o.rec.result === 'wrong') { bg = W; col = '#fff'; } else { bg = '#E5E5EA'; col = '#6b6b70'; } }
-    else if (o.weekend) { col = 'rgba(60,60,67,.2)'; }
-    var st = 'width:100%;aspect-ratio:1/1;border-radius:5px;border:none;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;padding:0;background:' + bg + ';cursor:' + (o.clickable ? 'pointer' : 'default') + ';';
-    if (o.k === TODAY) st += 'box-shadow:0 0 0 1.5px #007AFF;';
-    return { dayNum: o.dayNum, k: o.k, clickable: !!o.clickable, style: st, txtStyle: 'color:' + col + ';' };
+    if (!o.inMonth) return { dayNum: '', k: o.k, clickable: false, cls: 'blank' };
+    var cls = 'plain';
+    if (!o.weekend && o.rec) { cls = o.rec.result === 'correct' ? 'correct' : o.rec.result === 'wrong' ? 'wrong' : 'pending'; }
+    else if (o.weekend) cls = 'we';
+    if (o.k === TODAY) cls += ' today';
+    return { dayNum: o.dayNum, k: o.k, clickable: !!o.clickable, cls: cls };
   }
   function yearMonths(y) {
     var ws = weekStartNum(); var rec = recs();
@@ -172,11 +148,9 @@
   }
   function summaryRow(label, c, w) {
     var dec = c + w; var rate = dec ? Math.round(c / dec * 100) : 0; var C = resultColor('correct'), W = resultColor('wrong');
-    return { label: label, hasData: dec > 0, summary: dec ? (c + ' ถูก · ' + w + ' ผิด') : 'ไม่มีข้อมูล', blueWidth: (dec ? rate : 0) + '%', rateText: dec ? rate + '%' : '–', rateColor: !dec ? 'rgba(60,60,67,.3)' : (rate >= 50 ? C : W) };
+    return { label: label, summary: dec ? (c + ' ถูก · ' + w + ' ผิด') : 'ไม่มีข้อมูล', blueWidth: (dec ? rate : 0) + '%', rateText: dec ? rate + '%' : '–', rateColor: !dec ? 'var(--ink-4)' : (rate >= 50 ? C : W) };
   }
   function weeklySummary(weeks) {
-    // Count only in-month, non-weekend days (d.clickable === inMonth && !weekend),
-    // so records from adjacent months bleeding into a week row aren't tallied.
     var rec = recs();
     return weeks.map(function (wk, i) { var c = 0, w = 0; wk.days.forEach(function (d) { if (d.clickable) { var r = rec[d.k]; if (r) { if (r.result === 'correct') c++; else if (r.result === 'wrong') w++; } } }); return summaryRow('สัปดาห์ ' + (i + 1), c, w); });
   }
@@ -206,21 +180,21 @@
     return entries;
   }
 
-  // ── mutations ─────────────────────────────────────────────────────────────
+  // ── mutations ───────────────────────────────────────────────────────────────
   function setState(patch) { Object.assign(S, patch); render(); }
-  function persist() { saveData({ assets: S.assets, activeAssetId: S.activeAssetId, records: S.records }); }
-
-  function selectAsset(id) { S.activeAssetId = id; persist(); setState({ assetMenuOpen: false, curY: 2026, curM: 6, focusKey: TODAY }); }
+  function selectAsset(id) { S.activeAssetId = id; window.Store.setActive(id); mirror(); setState({ assetMenuOpen: false, curY: 2026, curM: 6, focusKey: TODAY }); }
   function openAssetEditor(id) { var ed; if (id) { var a = findAsset(id); ed = { id: id, name: a.name, tradingDays: a.tradingDays.slice(), colors: (a.colors || ['#8E8E93', '#B0B0B5']).slice() }; } else { ed = { id: null, name: '', tradingDays: [1, 2, 3, 4, 5], colors: ASSET_COLORS[S.assets.length % ASSET_COLORS.length] }; } setState({ assetEditor: ed, assetMenuOpen: false }); }
   function setEditor(patch) { setState({ assetEditor: Object.assign({}, S.assetEditor, patch) }); }
   function toggleEditorDay(dow) { var td = S.assetEditor.tradingDays.slice(); var i = td.indexOf(dow); if (i > -1) td.splice(i, 1); else td.push(dow); td.sort(function (a, b) { return a - b; }); setEditor({ tradingDays: td }); }
   function saveAsset() {
     var ed = S.assetEditor; if (!ed) return; var name = (ed.name || '').trim(); if (!name) return;
     var td = ed.tradingDays.length ? ed.tradingDays.slice().sort(function (a, b) { return a - b; }) : [1, 2, 3, 4, 5]; var badge = makeBadge(name);
-    if (ed.id) { S.assets = S.assets.map(function (a) { return a.id === ed.id ? Object.assign({}, a, { name: name, badge: badge, tradingDays: td, colors: ed.colors }) : a; }); persist(); setState({ assetEditor: null }); }
-    else { var id = 'a' + Date.now().toString(36); var na = { id: id, name: name, sub: '', badge: badge, colors: ed.colors, tradingDays: td }; S.assets = S.assets.concat([na]); S.records[id] = {}; S.activeAssetId = id; persist(); setState({ assetEditor: null, curY: 2026, curM: 6, focusKey: TODAY }); }
+    if (ed.id) { S.assets = S.assets.map(function (a) { return a.id === ed.id ? Object.assign({}, a, { name: name, badge: badge, tradingDays: td, colors: ed.colors }) : a; }); }
+    else { var id = 'a' + Date.now().toString(36); S.assets = S.assets.concat([{ id: id, name: name, sub: '', badge: badge, colors: ed.colors, tradingDays: td }]); S.records[id] = {}; S.activeAssetId = id; window.Store.setActive(id); }
+    mirror(); window.Store.putAssets(S.assets);
+    setState({ assetEditor: null, curY: 2026, curM: 6, focusKey: TODAY });
   }
-  function deleteAsset(id) { if (S.assets.length <= 1) return; S.assets = S.assets.filter(function (a) { return a.id !== id; }); delete S.records[id]; if (S.activeAssetId === id) S.activeAssetId = S.assets[0].id; persist(); setState({ assetEditor: null, assetMenuOpen: false }); }
+  function deleteAsset(id) { if (S.assets.length <= 1) return; S.assets = S.assets.filter(function (a) { return a.id !== id; }); delete S.records[id]; if (S.activeAssetId === id) { S.activeAssetId = S.assets[0].id; window.Store.setActive(S.activeAssetId); } mirror(); window.Store.delAsset(id); setState({ assetEditor: null, assetMenuOpen: false }); }
 
   function openDay(k) {
     var rec = recs()[k]; var isNew = !rec;
@@ -238,28 +212,51 @@
     var d = S.draft; var num = function (x) { return x === '' || x === null || x === undefined ? '' : Number(x); };
     var clean = Object.assign({}, d, { tMain: num(d.tMain), tSec: num(d.tSec) });
     var aid = S.activeAssetId; S.records[aid] = Object.assign({}, S.records[aid] || {}); S.records[aid][S.sheetKey] = clean;
-    persist(); setState({ page: (S.returnPage || 'overview'), draft: null, sheetKey: null });
+    mirror(); window.Store.putRecord(aid, S.sheetKey, clean);
+    setState({ page: (S.returnPage || 'overview'), draft: null, sheetKey: null });
   }
-  function deleteDraft() { var aid = S.activeAssetId; S.records[aid] = Object.assign({}, S.records[aid] || {}); delete S.records[aid][S.sheetKey]; persist(); setState({ page: (S.returnPage || 'overview'), draft: null, sheetKey: null }); }
+  function deleteDraft() { var aid = S.activeAssetId, k = S.sheetKey; S.records[aid] = Object.assign({}, S.records[aid] || {}); delete S.records[aid][k]; mirror(); window.Store.delRecord(aid, k); setState({ page: (S.returnPage || 'overview'), draft: null, sheetKey: null }); }
   function setField(k, v) { S.draft = Object.assign({}, S.draft); S.draft[k] = v; render(); }
-  function setFieldSilent(k, v) { S.draft[k] = v; } // for text/number inputs; no re-render
+  function setFieldSilent(k, v) { S.draft[k] = v; }
   function addNewsItem() { var t = (S.newsInput || '').trim(); if (!t) return; var list = (S.draft.news || []).concat([t]); setState({ draft: Object.assign({}, S.draft, { news: list }), newsInput: '' }); }
   function removeNewsItem(i) { var list = (S.draft.news || []).slice(); list.splice(i, 1); setState({ draft: Object.assign({}, S.draft, { news: list }) }); }
   function toggleMulti(field, value) { var cur = (S.draft[field] || []).slice(); var i = cur.indexOf(value); if (i > -1) cur.splice(i, 1); else cur.push(value); S.draft = Object.assign({}, S.draft); S.draft[field] = cur; render(); }
   function toggleFlag(field) { S.draft = Object.assign({}, S.draft); S.draft[field] = !S.draft[field]; render(); }
-
   function prev() { if (S.period === 'year') setState({ curY: S.curY - 1 }); else { var m = S.curM - 1, y = S.curY; if (m < 0) { m = 11; y--; } setState({ curM: m, curY: y }); } }
   function next() { if (S.period === 'year') setState({ curY: S.curY + 1 }); else { var m = S.curM + 1, y = S.curY; if (m > 11) { m = 0; y++; } setState({ curM: m, curY: y }); } }
   function goToday() { setState({ curY: 2026, curM: 6, focusKey: TODAY }); }
   function setFilter(dim, val) { var arr = (S.filters[dim] || []).slice(); var i = arr.indexOf(val); if (i > -1) arr.splice(i, 1); else arr.push(val); var f = Object.assign({}, S.filters); f[dim] = arr; setState({ filters: f }); }
   function clearFilters() { setState({ filters: { result: [], bias: [], news: [], pcr: [], add: [], wd: [], magnet: [], iv: [] }, search: '' }); }
 
-  // ── render helpers ────────────────────────────────────────────────────────
-  var CHEV_R = '<svg width="9" height="15" viewBox="0 0 9 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5L7 7.5l-5.5 6"></path></svg>';
-  var CHEV_L = '<svg width="9" height="15" viewBox="0 0 9 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5L2 7.5l5.5 6"></path></svg>';
+  // ── icons ────────────────────────────────────────────────────────────────
+  var IC = {
+    chevR: '<svg width="9" height="15" viewBox="0 0 9 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5L7 7.5l-5.5 6"></path></svg>',
+    chevL: '<svg width="9" height="15" viewBox="0 0 9 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5L2 7.5l5.5 6"></path></svg>',
+    grid: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="8" rx="1.6"></rect><rect x="14" y="3" width="7" height="5" rx="1.6"></rect><rect x="14" y="11" width="7" height="10" rx="1.6"></rect><rect x="3" y="14" width="7" height="7" rx="1.6"></rect></svg>',
+    search: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.2-3.2" stroke-linecap="round"></path></svg>',
+    plus: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>',
+    edit: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"></path><path d="M13.5 6.5l3 3"></path></svg>',
+    check: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg>',
+    x: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>',
+    target: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3.5"></circle></svg>',
+    cal: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect><path d="M3.5 9.5h17M8 3v4M16 3v4"></path></svg>',
+    doc: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="3.5" width="15" height="17" rx="2.5"></rect><path d="M8 8.5h8M8 12.5h8M8 16.5h5"></path></svg>',
+    back: '<svg width="10" height="16" viewBox="0 0 9 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5L2 7.5l5.5 6"></path></svg>'
+  };
 
-  function segBtns(dim, cur) { return OPT[dim].map(function (o) { return '<button data-a="setField" data-k="' + dim + '" data-v="' + o.v + '" style="' + segFormStyle(o.v === cur) + '">' + esc(o.l) + '</button>'; }).join(''); }
-  function multiBtns(dim, arr) { arr = arr || []; return OPT[dim].map(function (o) { var a = arr.indexOf(o.v) > -1; return '<button data-a="toggleMulti" data-k="' + dim + '" data-v="' + o.v + '" style="' + gridOptStyle(a) + '"><span style="' + (a ? 'font-weight:800;' : 'display:none') + '">✓ </span>' + esc(o.l) + '</button>'; }).join(''); }
+  // ── render pieces ────────────────────────────────────────────────────────
+  function syncPill() {
+    var st = window.Store.status();
+    var label = st === 'synced' ? '☁ ซิงก์แล้ว' : st === 'syncing' ? 'กำลังซิงก์…' : st === 'error' ? 'ซิงก์ไม่สำเร็จ' : st === 'offline' ? 'ออฟไลน์' : 'บันทึกในเครื่อง';
+    return '<span class="sync-pill ' + st + '" id="syncPill"><span class="sync-dot"></span>' + label + '</span>';
+  }
+  function updateSyncPill() {
+    var el = document.getElementById('syncPill'); if (!el) return;
+    var st = window.Store.status();
+    el.className = 'sync-pill ' + st;
+    var label = st === 'synced' ? '☁ ซิงก์แล้ว' : st === 'syncing' ? 'กำลังซิงก์…' : st === 'error' ? 'ซิงก์ไม่สำเร็จ' : st === 'offline' ? 'ออฟไลน์' : 'บันทึกในเครื่อง';
+    el.lastChild.nodeValue = label;
+  }
 
   function sidebar() {
     var a = activeAsset();
@@ -268,320 +265,229 @@
     if (S.assetMenuOpen) {
       var rows = S.assets.map(function (as) {
         var rc = S.records[as.id] || {}; var st = computeStats(Object.keys(rc), rc); var isActive = as.id === S.activeAssetId;
-        return '<div class="c-row" data-a="selectAsset" data-id="' + as.id + '" style="display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:11px;cursor:pointer;background:' + (isActive ? 'rgba(0,122,255,.09)' : 'transparent') + ';">' +
-          '<span style="' + badgeStyleOf(as.colors, 34, 13) + '">' + esc(as.badge || makeBadge(as.name)) + '</span>' +
-          '<span style="flex:1;min-width:0;"><span style="display:block;font-size:14px;font-weight:600;">' + esc(as.name) + '</span><span style="display:block;font-size:11px;color:rgba(60,60,67,.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(tradingDaysLabel(as.tradingDays) + ' · ' + st.total + ' วัน') + '</span></span>' +
-          '<span style="' + (isActive ? 'display:flex;color:#007AFF;flex:none;' : 'display:none') + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg></span>' +
-          '<button class="c-editbtn" data-a="openAssetEditor" data-id="' + as.id + '" style="width:28px;height:28px;border-radius:8px;border:none;background:rgba(118,118,128,.12);color:rgba(60,60,67,.6);cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;transition:background .15s;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"></path><path d="M13.5 6.5l3 3"></path></svg></button>' +
-          '</div>';
+        return '<div class="menu-row c-row' + (isActive ? ' active' : '') + '" data-a="selectAsset" data-id="' + as.id + '">' +
+          '<span class="badge" style="' + badgeStyle(as.colors, 34, 13) + '">' + esc(as.badge || makeBadge(as.name)) + '</span>' +
+          '<span style="flex:1;min-width:0;"><span class="menu-row-name">' + esc(as.name) + '</span><span class="menu-row-meta">' + esc(tradingDaysLabel(as.tradingDays) + ' · ' + st.total + ' วัน') + '</span></span>' +
+          (isActive ? '<span style="display:flex;color:var(--accent);flex:none;">' + IC.check + '</span>' : '') +
+          '<button class="icon-btn" data-a="openAssetEditor" data-id="' + as.id + '">' + IC.edit + '</button></div>';
       }).join('');
       menu = '<div data-a="closeAssetMenu" style="position:fixed;inset:0;z-index:35;"></div>' +
-        '<div style="position:absolute;top:100%;left:0;right:0;z-index:37;background:#fff;border-radius:16px;box-shadow:0 14px 38px rgba(0,0,0,.2);border:1px solid rgba(60,60,67,.1);padding:7px;margin-top:5px;animation:fadeIn .14s ease;">' +
-        '<div style="font-size:11px;font-weight:700;color:rgba(60,60,67,.42);text-transform:uppercase;letter-spacing:.05em;padding:5px 9px;">สินทรัพย์</div>' + rows +
-        '<button data-a="addAsset" style="width:100%;display:flex;align-items:center;gap:9px;padding:10px 9px;margin-top:4px;border-top:1px solid rgba(60,60,67,.08);background:none;border:none;cursor:pointer;color:#007AFF;font-weight:600;font-size:14px;font-family:inherit;">' +
-        '<span style="width:22px;height:22px;border-radius:7px;background:rgba(0,122,255,.12);display:flex;align-items:center;justify-content:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span>เพิ่มสินทรัพย์</button></div>';
+        '<div class="menu"><div class="menu-cap">สินทรัพย์</div>' + rows +
+        '<button class="menu-add" data-a="addAsset"><span style="width:22px;height:22px;border-radius:7px;background:rgba(10,132,255,.14);display:flex;align-items:center;justify-content:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span>เพิ่มสินทรัพย์</button></div>';
     }
-    return '<aside style="width:262px;flex:none;position:relative;z-index:30;background:rgba(249,249,251,.97);border-right:1px solid rgba(60,60,67,.13);display:flex;flex-direction:column;padding:20px 15px;">' +
-      '<div style="position:relative;margin-bottom:16px;">' +
-        '<button class="c-assetbtn" data-a="toggleAssetMenu" style="position:relative;z-index:36;width:100%;display:flex;align-items:center;gap:11px;padding:7px 8px;background:none;border:none;cursor:pointer;text-align:left;border-radius:13px;font-family:inherit;">' +
-          '<span style="' + badgeStyleOf(a.colors, 40, 15) + '">' + esc(a.badge || makeBadge(a.name)) + '</span>' +
-          '<span style="min-width:0;flex:1;"><span style="display:block;font-size:16px;font-weight:700;letter-spacing:-.01em;">' + esc(a.name) + '</span><span style="display:block;font-size:12px;color:rgba(60,60,67,.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(a.sub || tradingDaysLabel(a.tradingDays)) + '</span></span>' +
-          '<span style="display:flex;color:rgba(60,60,67,.4);transition:transform .2s;transform:rotate(' + (S.assetMenuOpen ? '90' : '0') + 'deg);"><svg width="8" height="13" viewBox="0 0 9 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5L7 7.5l-5.5 6"></path></svg></span>' +
-        '</button>' + menu +
-      '</div>' +
-      '<button data-a="navOverview" style="' + navStyle(S.page === 'overview') + '"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="8" rx="1.6"></rect><rect x="14" y="3" width="7" height="5" rx="1.6"></rect><rect x="14" y="11" width="7" height="10" rx="1.6"></rect><rect x="3" y="14" width="7" height="7" rx="1.6"></rect></svg>ภาพรวม</button>' +
-      '<button data-a="navSearch" style="' + navStyle(S.page === 'search') + '"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.2-3.2" stroke-linecap="round"></path></svg>ค้นหา</button>' +
-      '<div style="flex:1"></div>' +
-      '<div style="padding:10px 12px;border-radius:14px;background:rgba(118,118,128,.09);margin-bottom:10px;">' +
-        '<div style="font-size:11px;color:rgba(60,60,67,.5);font-weight:600;margin-bottom:2px;">Win rate ทั้งหมด</div>' +
-        '<div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:24px;font-weight:800;color:' + resultColor('correct') + ';">' + allStats.winPct + '%</span><span style="font-size:12px;color:rgba(60,60,67,.45);">' + allStats.decided + ' ครั้ง</span></div>' +
-      '</div>' +
-      '<button data-a="addToday" style="padding:13px;border-radius:14px;border:none;background:#007AFF;color:#fff;font-weight:700;font-size:15px;cursor:pointer;box-shadow:0 5px 14px rgba(0,122,255,.32);display:flex;align-items:center;justify-content:center;gap:7px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>บันทึกวันนี้</button>' +
+    return '<aside class="sidebar">' +
+      '<div class="brand"><button class="brand-btn" data-a="toggleAssetMenu">' +
+        '<span class="badge" style="' + badgeStyle(a.colors, 42, 15) + '">' + esc(a.badge || makeBadge(a.name)) + '</span>' +
+        '<span style="min-width:0;flex:1;"><span class="brand-name">' + esc(a.name) + '</span><span class="brand-sub">' + esc(a.sub || tradingDaysLabel(a.tradingDays)) + '</span></span>' +
+        '<span class="chev' + (S.assetMenuOpen ? ' open' : '') + '"><svg width="8" height="13" viewBox="0 0 9 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5L7 7.5l-5.5 6"></path></svg></span>' +
+      '</button>' + menu + '</div>' +
+      '<button class="nav-item' + (S.page === 'overview' ? ' active' : '') + '" data-a="navOverview">' + IC.grid + 'ภาพรวม</button>' +
+      '<button class="nav-item' + (S.page === 'search' ? ' active' : '') + '" data-a="navSearch">' + IC.search + 'ค้นหา</button>' +
+      '<div class="spacer" style="flex:1"></div>' +
+      '<div class="winrate-card"><div class="winrate-cap">Win rate ทั้งหมด</div><div style="display:flex;align-items:baseline;gap:6px;"><span class="winrate-val">' + allStats.winPct + '%</span><span style="font-size:12px;color:var(--ink-3);">' + allStats.decided + ' ครั้ง</span></div></div>' +
+      '<button class="btn btn-primary btn-record" data-a="addToday">' + IC.plus + 'บันทึกวันนี้</button>' +
     '</aside>';
   }
 
-  function header() {
+  function topbar() {
     if (S.page === 'record') {
       var dateLabel = fmtDowFull(S.sheetKey) + ' ' + fmtLong(S.sheetKey);
       var dateSub = (S.sheetIsNew ? 'บันทึกใหม่' : 'แก้ไขบันทึก') + ' · ' + activeAsset().name;
-      return '<div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:14px;">' +
-        '<button data-a="closeSheet" style="display:flex;align-items:center;gap:4px;background:none;border:none;color:#007AFF;font-size:16px;font-weight:500;cursor:pointer;flex:1;justify-content:flex-start;padding:0;"><svg width="10" height="16" viewBox="0 0 9 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5L2 7.5l5.5 6"></path></svg>กลับ</button>' +
-        '<div style="text-align:center;flex:none;"><div style="font-size:17px;font-weight:800;letter-spacing:-.01em;">' + esc(dateLabel) + '</div><div style="font-size:12px;color:rgba(60,60,67,.5);">' + esc(dateSub) + '</div></div>' +
-        '<div style="flex:1;display:flex;justify-content:flex-end;"><button data-a="saveDraft" style="background:#007AFF;border:none;color:#fff;font-size:15px;font-weight:700;padding:9px 20px;border-radius:11px;cursor:pointer;">บันทึก</button></div>' +
-      '</div>';
+      return '<button class="back-btn" data-a="closeSheet" style="flex:1;justify-content:flex-start;">' + IC.back + 'กลับ</button>' +
+        '<div class="date-center"><div class="d1">' + esc(dateLabel) + '</div><div class="d2">' + esc(dateSub) + '</div></div>' +
+        '<div style="flex:1;display:flex;justify-content:flex-end;gap:10px;align-items:center;">' + syncPill() + '<button class="btn btn-primary btn-save" data-a="saveDraft">บันทึก</button></div>';
     }
-    var right = '';
+    var right;
     if (S.page === 'overview') {
-      right = '<div style="display:inline-flex;background:rgba(118,118,128,.12);border-radius:9px;padding:2px;gap:2px;">' +
-        [['month', 'เดือน'], ['year', 'ปี']].map(function (p) { return '<button data-a="setPeriod" data-v="' + p[0] + '" style="' + segViewStyle(S.period === p[0]) + '">' + p[1] + '</button>'; }).join('') + '</div>';
+      right = '<div class="seg-view">' + [['month', 'เดือน'], ['year', 'ปี']].map(function (p) { return '<button class="' + (S.period === p[0] ? 'active' : '') + '" data-a="setPeriod" data-v="' + p[0] + '">' + p[1] + '</button>'; }).join('') + '</div>';
     } else {
-      right = '<div style="font-size:14px;color:rgba(60,60,67,.5);font-weight:500;">' + filteredResults().length + ' รายการ</div>';
+      right = '<span class="results-stat">' + filteredResults().length + ' รายการ</span>';
     }
-    return '<div style="display:flex;align-items:center;justify-content:space-between;width:100%;">' +
-      '<div style="font-size:22px;font-weight:800;letter-spacing:-.02em;">' + (S.page === 'search' ? 'ค้นหา' : 'ภาพรวม') + '</div>' + right + '</div>';
-  }
-
-  function kpiCard(cap, valueHtml, subHtml, iconBg, iconColor, icon) {
-    return '<div style="background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;flex-direction:column;gap:10px;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><span style="font-size:12.5px;font-weight:600;color:rgba(60,60,67,.6);">' + cap + '</span>' +
-      '<span style="width:28px;height:28px;border-radius:8px;background:' + iconBg + ';display:flex;align-items:center;justify-content:center;color:' + iconColor + ';flex:none;">' + icon + '</span></div>' +
-      '<div style="display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;">' + valueHtml + subHtml + '</div></div>';
+    return '<div class="page-title">' + (S.page === 'search' ? 'ค้นหา' : 'ภาพรวม') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:12px;">' + syncPill() + right + '</div>';
   }
 
   function overviewBody() {
-    var C = resultColor('correct'), W = resultColor('wrong');
-    var theme = { correct: C, wrong: W, correctSoft: hexToRgba(C, .12), wrongSoft: hexToRgba(W, .12) };
     var stats = computeStats(scopeKeys());
-    var vNum = function (n, color) { return '<span style="font-size:27px;font-weight:800;line-height:1;letter-spacing:-.02em;' + (color ? 'color:' + color + ';' : '') + '">' + n + '</span>'; };
-    var sub = function (t) { return '<span style="font-size:11.5px;color:rgba(60,60,67,.45);">' + t + '</span>'; };
-    var icCheck = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"></path></svg>';
-    var icX = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>';
-    var icTarget = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3.5"></circle></svg>';
-    var icCal = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect><path d="M3.5 9.5h17M8 3v4M16 3v4"></path></svg>';
-    var icDoc = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="3.5" width="15" height="17" rx="2.5"></rect><path d="M8 8.5h8M8 12.5h8M8 16.5h5"></path></svg>';
-    var kpis = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(184px,1fr));gap:12px;margin-bottom:20px;">' +
-      kpiCard('Bias ถูก', vNum(stats.correct, theme.correct), sub('ครั้งในช่วงนี้'), theme.correctSoft, theme.correct, icCheck) +
-      kpiCard('Bias ผิด', vNum(stats.wrong, theme.wrong), sub('ครั้งในช่วงนี้'), theme.wrongSoft, theme.wrong, icX) +
-      kpiCard('อัตราชนะ', vNum(stats.winPct + '%', theme.correct), sub('ถูก ' + stats.correct + ' · ผิด ' + stats.wrong), theme.correctSoft, theme.correct, icTarget) +
-      kpiCard('จดทั้งหมด', vNum(stats.total), sub('วันเทรด'), 'rgba(120,120,128,.12)', '#8E8E93', icCal) +
-      kpiCard('วันมีข่าว', vNum(stats.news, '#AF52DE'), sub('มีข่าวสำคัญ'), 'rgba(175,82,222,.13)', '#AF52DE', icDoc) +
+    var kpi = function (cap, val, valColor, sub, icBg, icColor, icon) {
+      return '<div class="card kpi"><div class="kpi-top"><span class="kpi-cap">' + cap + '</span><span class="kpi-icon" style="background:' + icBg + ';color:' + icColor + ';">' + icon + '</span></div>' +
+        '<div class="kpi-body"><span class="kpi-val"' + (valColor ? ' style="color:' + valColor + ';"' : '') + '>' + val + '</span><span class="kpi-sub">' + sub + '</span></div></div>';
+    };
+    var kpis = '<div class="kpis">' +
+      kpi('Bias ถูก', stats.correct, resultColor('correct'), 'ครั้งในช่วงนี้', resultColor('correct') === '#007AFF' ? 'rgba(0,122,255,.14)' : 'rgba(52,199,89,.16)', resultColor('correct'), IC.check) +
+      kpi('Bias ผิด', stats.wrong, resultColor('wrong'), 'ครั้งในช่วงนี้', resultColor('wrong') === '#FF9500' ? 'rgba(255,149,0,.16)' : 'rgba(255,59,48,.16)', resultColor('wrong'), IC.x) +
+      kpi('อัตราชนะ', stats.winPct + '%', resultColor('correct'), 'ถูก ' + stats.correct + ' · ผิด ' + stats.wrong, 'rgba(0,122,255,.14)', resultColor('correct'), IC.target) +
+      kpi('จดทั้งหมด', stats.total, '', 'วันเทรด', 'rgba(120,140,180,.16)', '#7C8AA6', IC.cal) +
+      kpi('วันมีข่าว', stats.news, '#AF52DE', 'มีข่าวสำคัญ', 'rgba(175,82,222,.14)', '#AF52DE', IC.doc) +
     '</div>';
 
     var periodLabel = S.period === 'year' ? String(S.curY + 543) : (MONTHS_FULL[S.curM] + ' ' + (S.curY + 543));
     var calInner;
     if (S.period === 'year') {
-      calInner = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:20px;">' +
-        yearMonths(S.curY).map(function (ym) {
-          return '<div><div style="font-size:14px;font-weight:700;margin-bottom:9px;">' + ym.name + '</div>' +
-            ym.weeks.map(function (wk) {
-              return '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px;">' +
-                wk.days.map(function (mc) { return '<button ' + (mc.clickable ? 'data-a="openDay" data-k="' + mc.k + '" class="c-microcell"' : '') + ' style="' + mc.style + '"><span style="' + mc.txtStyle + '">' + mc.dayNum + '</span></button>'; }).join('') + '</div>';
-            }).join('') + '</div>';
+      calInner = '<div class="year-grid">' + yearMonths(S.curY).map(function (ym) {
+        return '<div><div class="ym-name">' + ym.name + '</div>' + ym.weeks.map(function (wk) {
+          return '<div class="ym-week">' + wk.days.map(function (mc) { return '<button class="mcell ' + mc.cls + '" ' + (mc.clickable ? 'data-a="openDay" data-k="' + mc.k + '"' : '') + '>' + mc.dayNum + '</button>'; }).join('') + '</div>';
         }).join('') + '</div>';
+      }).join('') + '</div>';
     } else {
-      var wh = weekdayHeaders().map(function (h) { return '<div style="' + h.style + '">' + h.l + '</div>'; }).join('');
+      var ws = weekStartNum(); var order = ws === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+      var dowRow = '<div class="dow-row">' + order.map(function (i) { return '<div class="dow' + ((i === 0 || i === 6) ? ' we' : '') + '">' + DOW[i] + '</div>'; }).join('') + '</div>';
       var weeks = monthWeeks(S.curY, S.curM);
       var wksHtml = weeks.map(function (w) {
-        return '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-bottom:7px;">' +
-          w.days.map(function (c) { return '<button ' + (c.clickable ? 'data-a="openDay" data-k="' + c.k + '" class="c-cell"' : '') + ' style="' + c.style + '"><span style="' + c.numStyle + '">' + c.dayNum + '</span><span style="' + c.dotStyle + '"></span><span style="' + c.badgeStyle + '">' + c.badge + '</span></button>'; }).join('') + '</div>';
+        return '<div class="week">' + w.days.map(function (c) {
+          return '<button class="cell ' + c.cls + '" ' + (c.clickable ? 'data-a="openDay" data-k="' + c.k + '"' : '') + '>' +
+            '<span class="cell-num">' + c.dayNum + '</span>' + (c.dot ? '<span class="cell-dot ' + c.dot + '"></span>' : '') + (c.badge ? '<span class="cell-badge ' + c.badgeCls + '">' + c.badge + '</span>' : '') + '</button>';
+        }).join('') + '</div>';
       }).join('');
-      var legend = '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(60,60,67,.09);font-size:12px;color:rgba(60,60,67,.55);">' +
-        '<span style="display:flex;align-items:center;gap:6px;"><span style="width:13px;height:13px;border-radius:4px;background:' + theme.correctSoft + ';border:1px solid ' + theme.correct + ';"></span>Bias ถูก</span>' +
-        '<span style="display:flex;align-items:center;gap:6px;"><span style="width:13px;height:13px;border-radius:4px;background:' + theme.wrongSoft + ';border:1px solid ' + theme.wrong + ';"></span>Bias ผิด</span>' +
-        '<span style="display:flex;align-items:center;gap:6px;"><span style="width:13px;height:13px;border-radius:4px;border:1px dashed rgba(60,60,67,.35);"></span>รอสรุป</span>' +
-        '<span style="display:flex;align-items:center;gap:6px;"><span style="width:9px;height:9px;border-radius:50%;background:#34C759;"></span>ทิศขึ้น<span style="width:9px;height:9px;border-radius:50%;background:#FF3B30;margin-left:8px;"></span>ทิศลง</span></div>';
-      calInner = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-bottom:8px;">' + wh + '</div>' + wksHtml + legend;
+      var legend = '<div class="legend">' +
+        '<span><span class="lg-sw" style="background:' + resultColor('correct') + '22;border:1px solid ' + resultColor('correct') + ';"></span>Bias ถูก</span>' +
+        '<span><span class="lg-sw" style="background:' + resultColor('wrong') + '22;border:1px solid ' + resultColor('wrong') + ';"></span>Bias ผิด</span>' +
+        '<span><span class="lg-sw" style="border:1px dashed rgba(70,110,180,.5);"></span>รอสรุป</span>' +
+        '<span><span class="lg-dot" style="background:#34C759;"></span>ทิศขึ้น<span class="lg-dot" style="background:#FF3B30;margin-left:8px;"></span>ทิศลง</span></div>';
+      calInner = dowRow + wksHtml + legend;
     }
-    var calPanel = '<div style="flex:1 1 580px;min-width:0;background:#fff;border-radius:22px;padding:20px 22px;box-shadow:0 1px 3px rgba(0,0,0,.05);">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
-        '<div style="display:flex;align-items:center;gap:8px;">' +
-          '<button data-a="prev" style="width:34px;height:34px;border-radius:10px;border:none;background:rgba(118,118,128,.11);color:#007AFF;cursor:pointer;display:flex;align-items:center;justify-content:center;">' + CHEV_L + '</button>' +
-          '<div style="font-size:19px;font-weight:800;min-width:210px;text-align:center;letter-spacing:-.01em;">' + periodLabel + '</div>' +
-          '<button data-a="next" style="width:34px;height:34px;border-radius:10px;border:none;background:rgba(118,118,128,.11);color:#007AFF;cursor:pointer;display:flex;align-items:center;justify-content:center;">' + CHEV_R + '</button>' +
-        '</div>' +
-        '<button data-a="today" style="padding:8px 16px;border-radius:11px;border:none;background:rgba(0,122,255,.1);color:#007AFF;font-weight:600;font-size:14px;cursor:pointer;">วันนี้</button>' +
-      '</div>' + calInner + '</div>';
+    var calPanel = '<div class="card cal-panel"><div class="cal-head"><div class="cal-nav">' +
+      '<button class="round-btn" data-a="prev">' + IC.chevL + '</button><div class="cal-title">' + periodLabel + '</div><button class="round-btn" data-a="next">' + IC.chevR + '</button></div>' +
+      '<button class="today-btn" data-a="today">วันนี้</button></div>' + calInner + '</div>';
 
     var rightIsYear = S.period === 'year';
-    var rightRows = rightIsYear ? monthlySummary(S.curY) : weeklySummary(monthWeeks(S.curY, S.curM));
-    var rows = rightRows.map(function (r) {
-      return '<div style="padding:11px 0;border-bottom:1px solid rgba(60,60,67,.08);">' +
-        '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;"><span style="font-size:14px;font-weight:700;">' + r.label + '</span><span style="font-size:12px;color:rgba(60,60,67,.55);">' + r.summary + '</span></div>' +
-        '<div style="display:flex;align-items:center;gap:9px;"><div style="flex:1;height:8px;border-radius:4px;background:rgba(120,120,128,.14);overflow:hidden;"><div style="height:100%;width:' + r.blueWidth + ';background:' + theme.correct + ';border-radius:4px;transition:width .3s;"></div></div>' +
-        '<span style="font-size:12px;font-weight:800;color:' + r.rateColor + ';min-width:36px;text-align:right;">' + r.rateText + '</span></div></div>';
+    var rows = (rightIsYear ? monthlySummary(S.curY) : weeklySummary(monthWeeks(S.curY, S.curM))).map(function (r) {
+      return '<div class="sum-row"><div class="sum-top"><span class="sum-label">' + r.label + '</span><span class="sum-meta">' + r.summary + '</span></div>' +
+        '<div class="sum-bar-row"><div class="bar"><div class="bar-fill" style="width:' + r.blueWidth + ';"></div></div><span class="sum-rate" style="color:' + r.rateColor + ';">' + r.rateText + '</span></div></div>';
     }).join('');
-    var rightPanel = '<div style="flex:0 1 336px;min-width:288px;background:#fff;border-radius:22px;padding:19px 21px;box-shadow:0 1px 3px rgba(0,0,0,.05);">' +
-      '<div style="font-size:16px;font-weight:800;margin-bottom:6px;letter-spacing:-.01em;">' + (rightIsYear ? 'สรุปรายเดือน' : 'สรุปรายสัปดาห์') + '</div>' +
-      '<div style="font-size:12px;color:rgba(60,60,67,.5);margin-bottom:14px;">สัดส่วน Bias ถูก แต่ละช่วง</div>' + rows + '</div>';
+    var sidePanel = '<div class="card side-panel"><div class="side-title">' + (rightIsYear ? 'สรุปรายเดือน' : 'สรุปรายสัปดาห์') + '</div><div class="side-sub">สัดส่วน Bias ถูก แต่ละช่วง</div>' + rows + '</div>';
 
-    return '<div style="max-width:1440px;margin:0 auto;padding:24px 28px 64px;">' + kpis +
-      '<div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;">' + calPanel + rightPanel + '</div></div>';
+    return '<div class="wrap">' + kpis + '<div class="cols">' + calPanel + sidePanel + '</div></div>';
   }
 
   function searchBody() {
     var results = filteredResults();
     var fcount = 0; for (var fk in S.filters) fcount += (S.filters[fk] || []).length;
     var hasFilters = (!!S.search.trim()) || fcount > 0;
-    var filterChevron = 'display:flex;transition:transform .2s;transform:rotate(' + (S.filtersOpen ? '90' : '0') + 'deg);';
     var groups = [
-      { label: 'ผลลัพธ์', dim: 'result', opts: OPT.result },
-      { label: 'Bias', dim: 'bias', opts: OPT.bias },
+      { label: 'ผลลัพธ์', dim: 'result', opts: OPT.result }, { label: 'Bias', dim: 'bias', opts: OPT.bias },
       { label: 'ข่าว', dim: 'news', opts: [{ v: 'yes', l: 'มีข่าว' }, { v: 'no', l: 'ไม่มีข่าว' }] },
-      { label: 'PCR OI Change', dim: 'pcr', opts: OPT.pcr },
-      { label: 'เติมเงิน', dim: 'add', opts: OPT.add },
-      { label: 'ถอนเงิน', dim: 'wd', opts: OPT.wd },
-      { label: 'Magnet', dim: 'magnet', opts: OPT.magnet },
-      { label: 'IV', dim: 'iv', opts: OPT.iv }
+      { label: 'PCR OI Change', dim: 'pcr', opts: OPT.pcr }, { label: 'เติมเงิน', dim: 'add', opts: OPT.add },
+      { label: 'ถอนเงิน', dim: 'wd', opts: OPT.wd }, { label: 'Magnet', dim: 'magnet', opts: OPT.magnet }, { label: 'IV', dim: 'iv', opts: OPT.iv }
     ];
     var groupsHtml = groups.map(function (g) {
-      var chips = g.opts.map(function (o) { var active = (S.filters[g.dim] || []).indexOf(o.v) > -1; return '<button data-a="setFilter" data-dim="' + g.dim + '" data-v="' + o.v + '" style="' + chipStyle(active) + '"><span style="' + (active ? 'font-weight:800;' : 'display:none') + '">✓ </span>' + esc(o.l) + '</button>'; }).join('');
-      return '<div style="margin-bottom:9px;"><div style="font-size:11px;font-weight:700;color:rgba(60,60,67,.5);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px;">' + g.label + '</div><div style="display:flex;flex-wrap:wrap;gap:6px;">' + chips + '</div></div>';
+      var chips = g.opts.map(function (o) { var active = (S.filters[g.dim] || []).indexOf(o.v) > -1; return '<button class="chip' + (active ? ' active' : '') + '" data-a="setFilter" data-dim="' + g.dim + '" data-v="' + o.v + '">' + (active ? '✓ ' : '') + esc(o.l) + '</button>'; }).join('');
+      return '<div><div class="filter-group-cap">' + g.label + '</div><div class="chips">' + chips + '</div></div>';
     }).join('');
-
-    var filterCard = '<div style="background:#fff;border-radius:18px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:16px;overflow:hidden;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:15px 18px;">' +
-        '<button data-a="toggleFilters" style="flex:1;min-width:0;display:flex;align-items:center;gap:9px;background:none;border:none;cursor:pointer;text-align:left;padding:0;font-family:inherit;">' +
-          '<span style="' + filterChevron + '"><svg width="9" height="14" viewBox="0 0 9 15" fill="none" stroke="rgba(60,60,67,.5)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5L7 7.5l-5.5 6"></path></svg></span>' +
-          '<span style="font-size:14px;font-weight:800;color:#1c1c1e;">ตัวกรอง</span>' +
-          (fcount > 0 ? '<span style="font-size:12px;font-weight:700;color:#fff;background:#007AFF;border-radius:20px;padding:2px 9px;min-width:20px;text-align:center;">' + fcount + '</span>' : '') +
-        '</button>' +
-        (hasFilters ? '<button data-a="clearFilters" style="font-size:13px;color:#007AFF;background:none;border:none;cursor:pointer;font-weight:600;white-space:nowrap;flex:none;">ล้างทั้งหมด</button>' : '') +
-      '</div>' +
-      (S.filtersOpen ? '<div style="padding:0 18px 10px;border-top:1px solid rgba(60,60,67,.07);"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:11px 24px;margin-top:14px;">' + groupsHtml + '</div></div>' : '') +
-    '</div>';
+    var filterCard = '<div class="card filter-card"><div class="filter-head">' +
+      '<button class="filter-toggle" data-a="toggleFilters"><span class="chev' + (S.filtersOpen ? ' open' : '') + '"><svg width="9" height="14" viewBox="0 0 9 15" fill="none" stroke="var(--ink-3)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5L7 7.5l-5.5 6"></path></svg></span>' +
+      '<span class="h-strong">ตัวกรอง</span>' + (fcount > 0 ? '<span class="filter-badge">' + fcount + '</span>' : '') + '</button>' +
+      (hasFilters ? '<button class="filter-clear" data-a="clearFilters">ล้างทั้งหมด</button>' : '') + '</div>' +
+      (S.filtersOpen ? '<div class="filter-body"><div class="filter-grid">' + groupsHtml + '</div></div>' : '') + '</div>';
 
     var fC = 0, fW = 0; results.forEach(function (e) { if (e.result === 'correct') fC++; else if (e.result === 'wrong') fW++; }); var fD = fC + fW;
-    var statsLine = fD > 0 ? '<span style="font-size:13px;color:rgba(60,60,67,.55);">Bias <span style="color:' + resultColor('correct') + ';font-weight:700;">ถูก ' + fC + '</span> · <span style="color:' + resultColor('wrong') + ';font-weight:700;">ผิด ' + fW + '</span> · ชนะ <span style="font-weight:800;color:#1c1c1e;">' + (fD ? Math.round(fC / fD * 100) : 0) + '%</span></span>' : '';
-    var sortLabel = (S.sortDir === 'desc') ? 'ใหม่ → เก่า' : 'เก่า → ใหม่';
-    var resultsHead = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:4px 2px 13px;">' +
-      '<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;"><span style="font-size:16px;font-weight:800;">' + results.length + ' รายการ</span>' + statsLine + '</div>' +
-      '<button data-a="toggleSort" style="font-size:13px;color:#007AFF;background:rgba(0,122,255,.08);border:none;border-radius:9px;padding:8px 14px;cursor:pointer;font-weight:600;white-space:nowrap;">↕ ' + sortLabel + '</button></div>';
-
-    var list = results.length ? results.map(function (e) { return resultCard(e); }).join('') :
-      '<div style="text-align:center;padding:70px 20px;color:rgba(60,60,67,.35);"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="margin-bottom:10px;"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.2-3.2" stroke-linecap="round"></path></svg><div style="font-size:16px;font-weight:600;color:rgba(60,60,67,.5);">ไม่พบรายการ</div><div style="font-size:14px;margin-top:6px;">ลองปรับคำค้นหรือตัวกรอง</div></div>';
-
-    var searchInput = '<div style="position:relative;margin-bottom:16px;">' +
-      '<span style="position:absolute;left:16px;top:50%;transform:translateY(-50%);color:rgba(60,60,67,.4);display:flex;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.2-3.2" stroke-linecap="round"></path></svg></span>' +
-      '<input class="inp-search" data-a="search" value="' + esc(S.search) + '" placeholder="ค้นหาวันที่ หรือข่าว เช่น CPI, FOMC, NFP..." style="width:100%;padding:15px 16px 15px 46px;border-radius:14px;border:1px solid rgba(60,60,67,.1);background:#fff;font-size:16px;box-shadow:0 1px 3px rgba(0,0,0,.04);"></div>';
-
-    return '<div style="max-width:1060px;margin:0 auto;padding:22px 28px 72px;">' + searchInput + filterCard + resultsHead + list + '</div>';
+    var statsLine = fD > 0 ? '<span class="results-stat">Bias <span style="color:' + resultColor('correct') + ';font-weight:800;">ถูก ' + fC + '</span> · <span style="color:' + resultColor('wrong') + ';font-weight:800;">ผิด ' + fW + '</span> · ชนะ <span style="font-weight:800;color:var(--ink);">' + (fD ? Math.round(fC / fD * 100) : 0) + '%</span></span>' : '';
+    var resultsHead = '<div class="results-head"><div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;"><span class="results-count">' + results.length + ' รายการ</span>' + statsLine + '</div>' +
+      '<button class="sort-btn" data-a="toggleSort">↕ ' + (S.sortDir === 'desc' ? 'ใหม่ → เก่า' : 'เก่า → ใหม่') + '</button></div>';
+    var list = results.length ? results.map(resultCard).join('') :
+      '<div class="empty"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="margin-bottom:10px;opacity:.5;"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.2-3.2" stroke-linecap="round"></path></svg><div class="e1">ไม่พบรายการ</div><div class="e2">ลองปรับคำค้นหรือตัวกรอง</div></div>';
+    var searchInput = '<div class="search-box"><span class="s-icon">' + IC.search + '</span><input class="search-input inp-search" data-a="search" value="' + esc(S.search) + '" placeholder="ค้นหาวันที่ หรือข่าว เช่น CPI, FOMC, NFP..."></div>';
+    return '<div class="wrap-search">' + searchInput + filterCard + resultsHead + list + '</div>';
   }
-
   function resultCard(e) {
     var bi = biasMeta(e.bias), rm = resultMeta(e.result); var a = e.k.split('-').map(Number); var dt = new Date(a[0], a[1] - 1, a[2], 12);
     var hn = (e.newsOn && e.news && e.news.length > 0);
-    var tag = function (t) { return '<span style="font-size:11px;font-weight:600;color:rgba(60,60,67,.72);background:rgba(118,118,128,.1);padding:4px 9px;border-radius:7px;">' + t + '</span>'; };
-    return '<button data-a="openDay" data-k="' + e.k + '" class="c-card" style="width:100%;text-align:left;display:flex;align-items:stretch;gap:0;margin-bottom:10px;background:#fff;border:none;border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.05);cursor:pointer;overflow:hidden;transition:transform .12s, box-shadow .12s;">' +
-      '<span style="width:5px;flex:none;background:' + rm.color + ';"></span>' +
-      '<div style="flex:1;min-width:0;display:flex;gap:15px;align-items:center;padding:14px 16px;">' +
-        '<div style="min-width:54px;text-align:center;flex:none;"><div style="font-size:24px;font-weight:800;line-height:1;">' + a[2] + '</div><div style="font-size:11px;color:rgba(60,60,67,.55);margin-top:3px;">' + MONTHS_SHORT[a[1] - 1] + ' ' + (a[0] + 543) + '</div><div style="font-size:11px;color:rgba(60,60,67,.4);">' + DOW_FULL[dt.getDay()] + '</div></div>' +
-        '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:7px;">' +
-          '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;"><span style="font-size:12px;font-weight:700;padding:4px 11px;border-radius:8px;background:' + rm.soft + ';color:' + rm.color + ';">' + rm.label + '</span>' +
-            '<span style="font-size:14px;font-weight:700;color:' + bi.color + ';">' + bi.arrow + ' ' + esc(bi.label) + '</span>' +
-            '<span style="font-size:13px;color:rgba(60,60,67,.5);">เป้า ' + esc(e.tMain) + ' / ' + esc(e.tSec) + '</span></div>' +
-          '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + tag('PCR ' + optLabel('pcr', e.pcr)) + tag('OI ' + optLabel('oi', e.oi)) + tag('Magnet ' + optLabel('magnet', e.magnet)) + tag('IV ' + optLabel('iv', e.iv)) +
-            (hn ? '<span style="font-size:11px;font-weight:600;color:#AF52DE;background:rgba(175,82,222,.1);padding:4px 9px;border-radius:7px;">📰 ' + esc(e.news.join(' · ')) + '</span>' : '') + '</div>' +
-        '</div>' +
-        '<span style="color:rgba(60,60,67,.28);flex:none;"><svg width="9" height="15" viewBox="0 0 9 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5L7 7.5l-5.5 6"></path></svg></span>' +
-      '</div></button>';
+    var tag = function (t) { return '<span class="tag">' + t + '</span>'; };
+    return '<button class="result-card" data-a="openDay" data-k="' + e.k + '"><span class="rc-accent" style="background:' + rm.color + ';"></span>' +
+      '<div class="rc-body"><div class="rc-date"><div class="rc-daynum">' + a[2] + '</div><div class="rc-month">' + MONTHS_SHORT[a[1] - 1] + ' ' + (a[0] + 543) + '</div><div class="rc-dow">' + DOW_FULL[dt.getDay()] + '</div></div>' +
+      '<div class="rc-main"><div class="rc-line"><span class="pill-result" style="background:' + rm.soft + ';color:' + rm.color + ';">' + rm.label + '</span>' +
+      '<span class="rc-bias" style="color:' + bi.color + ';">' + bi.arrow + ' ' + esc(bi.label) + '</span><span class="rc-target">เป้า ' + esc(e.tMain) + ' / ' + esc(e.tSec) + '</span></div>' +
+      '<div class="tags">' + tag('PCR ' + optLabel('pcr', e.pcr)) + tag('OI ' + optLabel('oi', e.oi)) + tag('Magnet ' + optLabel('magnet', e.magnet)) + tag('IV ' + optLabel('iv', e.iv)) +
+      (hn ? '<span class="tag tag-news">📰 ' + esc(e.news.join(' · ')) + '</span>' : '') + '</div></div>' +
+      '<span class="rc-chev">' + IC.chevR + '</span></div></button>';
   }
 
-  function sectionTitle(title, aux) {
-    return '<div style="display:flex;align-items:center;gap:9px;margin:0 2px 13px;"><span style="width:4px;height:17px;border-radius:2px;background:#007AFF;flex:none;"></span><span style="font-size:16px;font-weight:800;letter-spacing:-.01em;">' + title + '</span>' + (aux ? '<span style="font-size:12px;color:rgba(60,60,67,.45);font-weight:500;">' + aux + '</span>' : '') + '</div>';
-  }
-  function fieldRow(label, control, noBorder) {
-    return '<div style="display:flex;align-items:center;gap:14px;padding:15px 0;' + (noBorder ? '' : 'border-bottom:1px solid rgba(60,60,67,.07);') + '"><div style="font-size:15px;font-weight:600;min-width:92px;flex:none;">' + label + '</div><div style="flex:1;display:flex;gap:3px;background:rgba(118,118,128,.1);border-radius:10px;padding:3px;">' + control + '</div></div>';
-  }
+  function segBtns(dim, cur) { return OPT[dim].map(function (o) { return '<button class="' + (o.v === cur ? 'active' : '') + '" data-a="setField" data-k="' + dim + '" data-v="' + o.v + '">' + esc(o.l) + '</button>'; }).join(''); }
+  function multiBtns(dim, arr) { arr = arr || []; return OPT[dim].map(function (o) { var a = arr.indexOf(o.v) > -1; return '<button class="gridopt' + (a ? ' active' : '') + '" data-a="toggleMulti" data-k="' + dim + '" data-v="' + o.v + '">' + (a ? '✓ ' : '') + esc(o.l) + '</button>'; }).join(''); }
+  function secTitle(name, aux) { return '<div class="sec-title"><span class="sec-bar"></span><span class="sec-name">' + name + '</span>' + (aux ? '<span class="sec-aux">' + aux + '</span>' : '') + '</div>'; }
 
   function recordBody() {
     var d = S.draft;
     var imgGroups = imageGroups().map(function (g) {
-      return '<div style="background:#fff;border-radius:18px;padding:15px 17px;box-shadow:0 1px 3px rgba(0,0,0,.05);">' +
-        '<div style="display:flex;align-items:baseline;gap:9px;margin-bottom:12px;"><span style="font-size:15px;font-weight:700;">' + g.label + '</span><span style="font-size:12px;color:rgba(60,60,67,.45);">' + g.time + '</span></div>' +
-        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">' +
-        g.items.map(function (it) { return '<div style="display:flex;flex-direction:column;gap:6px;"><div style="height:122px;border-radius:12px;overflow:hidden;background:rgba(118,118,128,.08);"><image-slot id="' + it.id + '" placeholder="' + esc(it.placeholder) + '" shape="rounded" radius="12"></image-slot></div><span style="font-size:11px;font-weight:600;color:rgba(60,60,67,.55);text-align:center;">' + esc(it.label) + '</span></div>'; }).join('') +
-        '</div></div>';
+      return '<div class="card img-card"><div class="img-card-head"><span class="img-card-label">' + g.label + '</span><span class="img-card-time">' + g.time + '</span></div>' +
+        '<div class="img-slots">' + g.items.map(function (it) { return '<div class="img-slot-wrap"><div class="img-frame"><image-slot id="' + it.id + '" placeholder="' + esc(it.placeholder) + '" shape="rounded" radius="14"></image-slot></div><span class="img-slot-cap">' + esc(it.label) + '</span></div>'; }).join('') + '</div></div>';
     }).join('');
-    var imagesSection = '<div style="margin-bottom:24px;">' + sectionTitle('รูปภาพประกอบ', 'แยกตามช่วงเวลา') +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;">' + imgGroups + '</div></div>';
+    var imagesSection = '<div style="margin-bottom:24px;">' + secTitle('รูปภาพประกอบ', 'แยกตามช่วงเวลา') + '<div class="img-groups">' + imgGroups + '</div></div>';
 
-    // target inputs
-    var tInput = function (val, act, capt) { return '<label style="flex:1;display:flex;flex-direction:column;gap:4px;"><input class="inp-form" data-a="input" data-k="' + act + '" value="' + esc(val === undefined ? '' : val) + '" type="number" inputmode="decimal" placeholder="0" style="width:100%;padding:11px 13px;border-radius:10px;border:1px solid rgba(60,60,67,.16);background:#F2F2F7;font-size:16px;text-align:right;font-weight:600;"><span style="font-size:11px;color:rgba(60,60,67,.45);text-align:right;">' + capt + '</span></label>'; };
-
-    // news block
+    var tInput = function (val, act, capt) { return '<label class="target-field"><input class="input num inp-form" data-a="input" data-k="' + act + '" value="' + esc(val === undefined ? '' : val) + '" type="number" inputmode="decimal" placeholder="0"><span class="input-cap">' + capt + '</span></label>'; };
     var newsBlock = '';
     if (d.newsOn) {
-      var items = (d.news || []).length ? '<div style="display:flex;flex-direction:column;gap:7px;">' + (d.news || []).map(function (t, i) { return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#F2F2F7;border-radius:10px;"><span style="flex:1;font-size:14px;color:#1c1c1e;">' + esc(t) + '</span><button data-a="removeNews" data-i="' + i + '" style="width:22px;height:22px;border-radius:50%;border:none;background:rgba(60,60,67,.14);color:rgba(60,60,67,.65);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;">✕</button></div>'; }).join('') + '</div>' : '<div style="font-size:13px;color:rgba(60,60,67,.4);">ยังไม่มีข่าว · พิมพ์แล้วกดเพิ่ม</div>';
-      newsBlock = '<div style="margin-top:13px;"><div style="display:flex;gap:8px;margin-bottom:10px;">' +
-        '<input class="inp-form" data-a="newsInput" data-k="newsInput" value="' + esc(S.newsInput) + '" type="text" placeholder="พิมพ์ข่าว แล้วกด Enter เช่น CPI สหรัฐ 19:30" style="flex:1;padding:11px 13px;border-radius:10px;border:1px solid rgba(60,60,67,.16);background:#F2F2F7;font-size:15px;">' +
-        '<button data-a="addNews" style="padding:0 20px;border-radius:10px;border:none;background:#007AFF;color:#fff;font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap;">+ เพิ่ม</button></div>' + items + '</div>';
+      var items = (d.news || []).length ? '<div class="news-list">' + (d.news || []).map(function (t, i) { return '<div class="news-item"><span>' + esc(t) + '</span><button class="news-x" data-a="removeNews" data-i="' + i + '">✕</button></div>'; }).join('') + '</div>' : '<div class="news-empty">ยังไม่มีข่าว · พิมพ์แล้วกดเพิ่ม</div>';
+      newsBlock = '<div class="news-add"><input class="news-input inp-form" data-a="newsInput" data-k="newsInput" value="' + esc(S.newsInput) + '" type="text" placeholder="พิมพ์ข่าว แล้วกด Enter เช่น CPI สหรัฐ 19:30"><button class="news-add-btn" data-a="addNews">+ เพิ่ม</button></div>' + items;
     }
-    var tradeCard = '<div><div style="display:flex;align-items:center;gap:9px;margin:0 2px 13px;"><span style="width:4px;height:17px;border-radius:2px;background:#007AFF;flex:none;"></span><span style="font-size:16px;font-weight:800;letter-spacing:-.01em;">ข้อมูลเทรด</span></div>' +
-      '<div style="background:#fff;border-radius:18px;padding:4px 18px;box-shadow:0 1px 3px rgba(0,0,0,.05);">' +
-        fieldRow('Bias', segBtns('bias', d.bias)) +
-        '<div style="display:flex;align-items:center;gap:14px;padding:15px 0;border-bottom:1px solid rgba(60,60,67,.07);"><div style="font-size:15px;font-weight:600;min-width:92px;flex:none;">เป้าหมาย</div><div style="flex:1;display:flex;gap:10px;">' + tInput(d.tMain, 'tMain', 'เป้าหลัก') + tInput(d.tSec, 'tSec', 'เป้ารอง') + '</div></div>' +
-        '<div style="padding:15px 0;"><div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-size:15px;font-weight:600;">มีข่าว</span><button data-a="toggleFlag" data-k="newsOn" style="' + toggleStyle(!!d.newsOn) + '"><span style="' + knobStyle() + '"></span></button></div>' + newsBlock + '</div>' +
+    var tradeCard = '<div>' + secTitle('ข้อมูลเทรด') + '<div class="card form-card">' +
+      '<div class="frow"><div class="frow-label">Bias</div><div class="frow-body"><div class="seg">' + segBtns('bias', d.bias) + '</div></div></div>' +
+      '<div class="frow"><div class="frow-label">เป้าหมาย</div><div class="targets">' + tInput(d.tMain, 'tMain', 'เป้าหลัก') + tInput(d.tSec, 'tSec', 'เป้ารอง') + '</div></div>' +
+      '<div class="frow" style="border-bottom:none;flex-direction:column;align-items:stretch;"><div class="stack-head"><span class="stack-label">มีข่าว</span><button class="toggle' + (d.newsOn ? ' on' : '') + '" data-a="toggleFlag" data-k="newsOn"><span class="toggle-knob"></span></button></div>' + newsBlock + '</div>' +
+      '</div></div>';
+    var resultCardEl = '<div>' + secTitle('ผลลัพธ์') + '<div class="card form-card"><div class="frow" style="border-bottom:none;"><div class="frow-label">Bias ถูก/ผิด</div><div class="frow-body"><div class="seg">' + segBtns('result', d.result) + '</div></div></div></div>' +
+      (!S.sheetIsNew ? '<button class="delete-btn" data-a="deleteDraft">ลบบันทึก</button>' : '') + '</div>';
+    var leftCol = '<div class="col">' + tradeCard + resultCardEl + '</div>';
+
+    var wdBlock = d.wdOn ? '<div style="margin-top:12px;"><div class="multi-head" style="margin-bottom:9px;"><span class="m2">เลือกได้หลายตัว</span></div><div class="gridopts">' + multiBtns('wd', d.wd) + '</div></div>' : '';
+    var researchCard = '<div class="col" style="gap:0;">' + secTitle('ข้อมูลวิจัย', 'Option Flow') + '<div class="card form-card">' +
+      '<div class="frow"><div class="frow-label">PCR OI Change</div><div class="frow-body"><div class="seg">' + segBtns('pcr', d.pcr) + '</div></div></div>' +
+      '<div class="strike-row"><span class="strike-title">อ่าน Strike</span><span class="strike-sub">เม็ดเงินMMจากออปชัน</span></div>' +
+      '<div class="multi-block"><div class="multi-head"><span class="m1">เติมเงิน</span><span class="m2">เลือกได้หลายตัว</span></div><div class="gridopts">' + multiBtns('add', d.add) + '</div></div>' +
+      '<div class="stack" style="border-bottom:1px solid rgba(120,150,210,.16);"><div class="stack-head"><span class="stack-label">ถอนเงิน</span><button class="toggle' + (d.wdOn ? ' on' : '') + '" data-a="toggleFlag" data-k="wdOn"><span class="toggle-knob"></span></button></div>' + wdBlock + '</div>' +
+      '<div class="frow"><div class="frow-label">Magnet</div><div class="frow-body"><div class="seg">' + segBtns('magnet', d.magnet) + '</div></div></div>' +
+      '<div class="frow" style="border-bottom:none;"><div class="frow-label">IV</div><div class="frow-body"><div class="seg">' + segBtns('iv', d.iv) + '</div></div></div>' +
       '</div></div>';
 
-    var resultCardEl = '<div><div style="display:flex;align-items:center;gap:9px;margin:0 2px 13px;"><span style="width:4px;height:17px;border-radius:2px;background:#007AFF;flex:none;"></span><span style="font-size:16px;font-weight:800;letter-spacing:-.01em;">ผลลัพธ์</span></div>' +
-      '<div style="background:#fff;border-radius:18px;padding:4px 18px;box-shadow:0 1px 3px rgba(0,0,0,.05);">' + fieldRow('Bias ถูก/ผิด', segBtns('result', d.result), true) + '</div>' +
-      (!S.sheetIsNew ? '<button data-a="deleteDraft" style="width:100%;margin-top:14px;padding:13px;border-radius:14px;border:none;background:rgba(255,59,48,.1);color:#FF3B30;font-size:15px;font-weight:600;cursor:pointer;">ลบบันทึก</button>' : '') + '</div>';
-
-    var leftCol = '<div style="flex:1 1 384px;min-width:0;display:flex;flex-direction:column;gap:24px;">' + tradeCard + resultCardEl + '</div>';
-
-    var wdBlock = d.wdOn ? '<div style="margin-top:12px;"><div style="font-size:11px;color:rgba(60,60,67,.42);margin-bottom:9px;">เลือกได้หลายตัว</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">' + multiBtns('wd', d.wd) + '</div></div>' : '';
-    var researchCard = '<div style="flex:1 1 384px;min-width:0;">' + sectionTitle('ข้อมูลวิจัย', 'Option Flow') +
-      '<div style="background:#fff;border-radius:18px;padding:4px 18px;box-shadow:0 1px 3px rgba(0,0,0,.05);">' +
-        fieldRow('PCR OI Change', segBtns('pcr', d.pcr)) +
-        '<div style="display:flex;align-items:baseline;gap:8px;padding:15px 2px 11px;margin-top:2px;border-top:1px solid rgba(60,60,67,.09);"><span style="font-size:13px;font-weight:800;color:#007AFF;letter-spacing:.02em;">อ่าน Strike</span><span style="font-size:11px;color:rgba(60,60,67,.42);">เม็ดเงินMMจากออปชัน</span></div>' +
-        '<div style="padding:6px 0 15px;border-bottom:1px solid rgba(60,60,67,.07);"><div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;"><span style="font-size:15px;font-weight:600;">เติมเงิน</span><span style="font-size:11px;color:rgba(60,60,67,.42);">เลือกได้หลายตัว</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">' + multiBtns('add', d.add) + '</div></div>' +
-        '<div style="padding:15px 0;border-bottom:1px solid rgba(60,60,67,.07);"><div style="display:flex;align-items:center;justify-content:space-between;"><span style="font-size:15px;font-weight:600;">ถอนเงิน</span><button data-a="toggleFlag" data-k="wdOn" style="' + toggleStyle(!!d.wdOn) + '"><span style="' + knobStyle() + '"></span></button></div>' + wdBlock + '</div>' +
-        fieldRow('Magnet', segBtns('magnet', d.magnet)) +
-        fieldRow('IV', segBtns('iv', d.iv), true) +
-      '</div></div>';
-
-    return '<div style="max-width:1120px;margin:0 auto;padding:24px 28px 80px;">' + imagesSection +
-      '<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;">' + leftCol + researchCard + '</div></div>';
+    return '<div class="wrap-record">' + imagesSection + '<div class="two-col">' + leftCol + researchCard + '</div></div>';
   }
 
   function assetEditorModal() {
     if (!S.assetEditor) return '';
     var ed = S.assetEditor; var nm = (ed.name || '').trim();
-    var dayOpts = [0, 1, 2, 3, 4, 5, 6].map(function (i) { var on = ed.tradingDays.indexOf(i) > -1; return '<button data-a="editorDay" data-i="' + i + '" style="' + dayChipStyle(on) + '">' + DOW[i] + '</button>'; }).join('');
-    var colorOpts = ASSET_COLORS.map(function (c, idx) { var on = c[0] === ed.colors[0]; return '<button data-a="editorColor" data-i="' + idx + '" style="' + colorSwatchStyle(c, on) + '"><span style="' + (on ? 'color:#fff;font-size:15px;font-weight:800;line-height:1;' : 'display:none') + '">✓</span></button>'; }).join('');
-    return '<div data-a="closeEditor" style="position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.34);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:fadeIn .2s ease;">' +
-      '<div data-a="stop" style="width:100%;max-width:452px;background:#fff;border-radius:24px;box-shadow:0 30px 70px rgba(0,0,0,.34);animation:sheetIn .3s cubic-bezier(.2,.75,.2,1);overflow:hidden;">' +
-        '<div style="padding:22px 24px 8px;"><div style="font-size:20px;font-weight:800;letter-spacing:-.02em;">' + (ed.id ? 'แก้ไขสินทรัพย์' : 'เพิ่มสินทรัพย์') + '</div><div style="font-size:13px;color:rgba(60,60,67,.5);margin-top:2px;">ตั้งชื่อ เลือกสี และวันที่เทรด</div></div>' +
-        '<div style="padding:16px 24px 4px;display:flex;flex-direction:column;gap:22px;">' +
-          '<div style="display:flex;align-items:flex-end;gap:14px;"><span style="' + badgeStyleOf(ed.colors, 48, 18) + '">' + esc(makeBadge(ed.name)) + '</span>' +
-            '<label style="flex:1;min-width:0;"><span style="display:block;font-size:12px;font-weight:600;color:rgba(60,60,67,.55);margin-bottom:6px;">ชื่อสินทรัพย์</span><input class="inp-form" data-a="editorName" value="' + esc(ed.name) + '" placeholder="เช่น GC, SET50, BTC" style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid rgba(60,60,67,.16);background:#F2F2F7;font-size:16px;font-weight:600;"></label></div>' +
-          '<div><div style="font-size:12px;font-weight:600;color:rgba(60,60,67,.55);margin-bottom:10px;">สี</div><div style="display:flex;gap:11px;flex-wrap:wrap;">' + colorOpts + '</div></div>' +
-          '<div><div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;"><span style="font-size:12px;font-weight:600;color:rgba(60,60,67,.55);">วันที่เทรด</span><span style="font-size:11px;font-weight:600;color:#007AFF;">' + esc(tradingDaysLabel(ed.tradingDays)) + '</span></div><div style="display:flex;gap:6px;">' + dayOpts + '</div></div>' +
-        '</div>' +
-        '<div style="display:flex;align-items:center;gap:10px;padding:18px 24px 22px;">' +
-          (ed.id && S.assets.length > 1 ? '<button data-a="deleteAsset" style="padding:12px 16px;border-radius:13px;border:none;background:rgba(255,59,48,.1);color:#FF3B30;font-weight:600;font-size:15px;cursor:pointer;">ลบ</button>' : '') +
-          '<div style="flex:1"></div>' +
-          '<button data-a="closeEditor" style="padding:12px 20px;border-radius:13px;border:none;background:rgba(118,118,128,.14);color:#1c1c1e;font-weight:600;font-size:15px;cursor:pointer;">ยกเลิก</button>' +
-          '<button data-a="saveAsset" style="padding:12px 26px;border-radius:13px;border:none;background:' + (nm ? '#007AFF' : 'rgba(0,122,255,.4)') + ';color:#fff;font-weight:700;font-size:15px;cursor:' + (nm ? 'pointer' : 'not-allowed') + ';">บันทึก</button>' +
-        '</div>' +
-      '</div></div>';
+    var dayOpts = [0, 1, 2, 3, 4, 5, 6].map(function (i) { var on = ed.tradingDays.indexOf(i) > -1; return '<button class="day-chip' + (on ? ' on' : '') + '" data-a="editorDay" data-i="' + i + '">' + DOW[i] + '</button>'; }).join('');
+    var colorOpts = ASSET_COLORS.map(function (c, idx) { var on = c[0] === ed.colors[0]; return '<button class="swatch' + (on ? ' on' : '') + '" data-a="editorColor" data-i="' + idx + '" style="background:linear-gradient(155deg,' + c[1] + ',' + c[0] + ');color:' + c[0] + ';">' + (on ? '✓' : '') + '</button>'; }).join('');
+    return '<div class="backdrop" data-a="closeEditor"><div class="modal" data-a="stop">' +
+      '<div class="modal-head"><div class="modal-title">' + (ed.id ? 'แก้ไขสินทรัพย์' : 'เพิ่มสินทรัพย์') + '</div><div class="modal-sub">ตั้งชื่อ เลือกสี และวันที่เทรด</div></div>' +
+      '<div class="modal-body">' +
+        '<div class="editor-name-row"><span class="badge" style="' + badgeStyle(ed.colors, 48, 18) + '">' + esc(makeBadge(ed.name)) + '</span>' +
+          '<label style="flex:1;min-width:0;"><span class="field-cap">ชื่อสินทรัพย์</span><input class="input inp-form" data-a="editorName" value="' + esc(ed.name) + '" placeholder="เช่น GC, SET50, BTC" style="font-weight:700;"></label></div>' +
+        '<div><div class="field-cap">สี</div><div class="swatches">' + colorOpts + '</div></div>' +
+        '<div><div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;"><span class="field-cap" style="margin:0;">วันที่เทรด</span><span class="days-label">' + esc(tradingDaysLabel(ed.tradingDays)) + '</span></div><div class="day-opts">' + dayOpts + '</div></div>' +
+      '</div>' +
+      '<div class="modal-foot">' + (ed.id && S.assets.length > 1 ? '<button class="btn-modal btn-danger-soft" data-a="deleteAsset">ลบ</button>' : '') + '<div class="grow"></div>' +
+        '<button class="btn-modal btn-ghost" data-a="closeEditor">ยกเลิก</button>' +
+        '<button class="btn-modal btn-primary" data-a="saveAsset" style="' + (nm ? '' : 'opacity:.5;cursor:not-allowed;') + '">บันทึก</button>' +
+      '</div></div></div>';
   }
 
-  // ── render ────────────────────────────────────────────────────────────────
+  // ── render ───────────────────────────────────────────────────────────────
   var root = document.getElementById('app');
   function captureFocus() {
     var el = document.activeElement;
     if (!el || !el.dataset || el.dataset.a == null || !root.contains(el)) return null;
-    var info = { a: el.dataset.a, k: el.dataset.k || '', dim: el.dataset.dim || '' };
+    var info = { a: el.dataset.a, k: el.dataset.k || '', dim: el.dataset.dim || '', v: el.dataset.v || '' };
     try { if (el.type !== 'number') { info.start = el.selectionStart; info.end = el.selectionEnd; } } catch (e) {}
     return info;
   }
   function restoreFocus(info) {
     if (!info) return;
-    var sel = '[data-a="' + info.a + '"]' + (info.k ? '[data-k="' + info.k + '"]' : '') + (info.dim ? '[data-dim="' + info.dim + '"]' : '');
-    var el = root.querySelector(sel);
-    if (!el) return;
-    el.focus();
+    var sel = '[data-a="' + info.a + '"]' + (info.k ? '[data-k="' + info.k + '"]' : '') + (info.dim ? '[data-dim="' + info.dim + '"]' : '') + (info.v ? '[data-v="' + info.v + '"]' : '');
+    var el = root.querySelector(sel); if (!el) return; el.focus();
     if (info.start != null && el.setSelectionRange) { try { el.setSelectionRange(info.start, info.end); } catch (e) {} }
   }
-  function captureScroll() { var s = root.querySelector('#mainScroll'); return s ? s.scrollTop : 0; }
-
   function render() {
+    if (!S.ready) { root.innerHTML = '<div class="loading"><div class="spinner"></div><div>กำลังโหลดสมุดบันทึก…</div></div>'; return; }
     var focus = captureFocus();
-    var scroll = captureScroll();
+    var scEl = root.querySelector('.scroll'); var scroll = scEl ? scEl.scrollTop : 0;
     var body = S.page === 'overview' ? overviewBody() : S.page === 'search' ? searchBody() : recordBody();
-    root.innerHTML =
-      '<div style="display:flex;height:100vh;width:100%;overflow:hidden;">' + sidebar() +
-        '<main style="flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;">' +
-          '<header style="flex:none;height:62px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;background:rgba(255,255,255,.78);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid rgba(60,60,67,.12);z-index:5;">' + header() + '</header>' +
-          '<div id="mainScroll" style="flex:1;overflow:auto;min-height:0;">' + body + '</div>' +
-        '</main>' +
-      '</div>' + assetEditorModal();
-    var s = root.querySelector('#mainScroll'); if (s) s.scrollTop = scroll;
+    root.innerHTML = '<div class="shell">' + sidebar() +
+      '<main class="main"><header class="topbar">' + topbar() + '</header><div class="scroll">' + body + '</div></main></div>' + assetEditorModal();
+    var s2 = root.querySelector('.scroll'); if (s2) s2.scrollTop = scroll;
     restoreFocus(focus);
   }
 
-  // ── event delegation ──────────────────────────────────────────────────────
+  // ── delegation ───────────────────────────────────────────────────────────
   var NUMERIC = { tMain: 1, tSec: 1 };
   var ACTIONS = {
     toggleAssetMenu: function () { setState({ assetMenuOpen: !S.assetMenuOpen }); },
@@ -609,16 +515,12 @@
     editorDay: function (ds) { toggleEditorDay(parseInt(ds.i, 10)); },
     saveAsset: saveAsset, closeEditor: function () { setState({ assetEditor: null }); },
     deleteAsset: function () { if (S.assetEditor) deleteAsset(S.assetEditor.id); },
-    stop: function (ds, e) { e.stopPropagation(); }
+    stop: function () {}
   };
-
   root.addEventListener('click', function (e) {
-    var el = e.target.closest('[data-a]');
-    if (!el || !root.contains(el)) return;
-    var a = el.dataset.a;
-    if (a === 'stop') return; // container; let inner clicks pass
-    var fn = ACTIONS[a];
-    if (fn) { e.stopPropagation(); fn(el.dataset, e); }
+    var el = e.target.closest('[data-a]'); if (!el || !root.contains(el)) return;
+    var a = el.dataset.a; if (a === 'stop') return;
+    var fn = ACTIONS[a]; if (fn) { e.stopPropagation(); fn(el.dataset, e); }
   });
   root.addEventListener('input', function (e) {
     var el = e.target; if (!el.dataset) return; var a = el.dataset.a;
@@ -632,5 +534,11 @@
     if (e.key === 'Escape') { if (S.assetEditor) setState({ assetEditor: null }); else if (S.assetMenuOpen) setState({ assetMenuOpen: false }); }
   });
 
-  render();
+  // ── boot ─────────────────────────────────────────────────────────────────
+  window.Store.onStatus(updateSyncPill);
+  render(); // loading screen
+  window.Store.load(seedAll).then(function (data) {
+    S.assets = data.assets; S.records = data.records; S.activeAssetId = data.activeAssetId; S.ready = true;
+    render();
+  });
 })();
