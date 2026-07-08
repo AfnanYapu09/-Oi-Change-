@@ -1,0 +1,86 @@
+/* ==========================================================================
+   GC · Trade Journal (บันทึกไบแอสรายวัน)
+   Faithful port of the Claude Design handoff "Trade Journal.dc.html".
+   iOS/macOS-HIG aesthetic. Base reset + interaction states live here; the
+   component paints exact inline styles from JS to preserve pixel parity.
+   ========================================================================== */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Anuphan", "IBM Plex Sans Thai", system-ui, sans-serif;
+  background: #F2F2F7;
+  color: #1c1c1e;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+button { font-family: inherit; }
+a { color: #007AFF; text-decoration: none; }
+a:hover { text-decoration: underline; }
+input, textarea { font-family: inherit; outline: none; }
+input::placeholder, textarea::placeholder { color: rgba(60, 60, 67, .32); }
+
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb { background: rgba(60, 60, 67, .22); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(60, 60, 67, .35); background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheetIn { from { transform: translateY(28px) scale(.985); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+
+#app { height: 100%; }
+
+/* ── interaction states the inline styles can't express ─────────────────── */
+.c-cell { transition: filter .12s; }
+.c-cell:hover { filter: brightness(.97); }
+.c-microcell:hover { filter: brightness(.9); }
+
+.c-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, .08) !important; }
+.c-week:hover { filter: brightness(.98); }
+
+.c-row:hover { filter: brightness(.97); }
+.c-assetbtn { transition: background .15s; }
+.c-assetbtn:hover { background: rgba(118, 118, 128, .1) !important; }
+.c-editbtn:hover { background: rgba(118, 118, 128, .22) !important; }
+
+.inp-search:focus { border-color: #007AFF !important; box-shadow: 0 0 0 3px rgba(0, 122, 255, .15) !important; }
+.inp-form:focus { border-color: #007AFF !important; background: #fff !important; }
+
+/* ── image-slot component ──────────────────────────────────────────────── */
+.image-slot {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: rgba(60, 60, 67, .4);
+  text-align: center;
+  user-select: none;
+  border-radius: inherit;
+  transition: background .15s;
+}
+.image-slot.is-empty:hover { background: rgba(118, 118, 128, .13); }
+.image-slot.is-dragover { background: rgba(0, 122, 255, .12); box-shadow: inset 0 0 0 2px #007AFF; }
+.image-slot .slot-empty { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px; pointer-events: none; }
+.image-slot .slot-cap { font-size: 11.5px; font-weight: 600; color: rgba(60, 60, 67, .5); line-height: 1.3; }
+.image-slot .slot-sub { font-size: 10.5px; color: rgba(60, 60, 67, .38); }
+.image-slot .slot-sub u { text-decoration: underline; }
+.image-slot img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
+.image-slot .slot-remove {
+  position: absolute; top: 6px; right: 6px;
+  width: 24px; height: 24px; border-radius: 50%;
+  border: none; background: rgba(0, 0, 0, .55); color: #fff;
+  font-size: 13px; cursor: pointer; display: none;
+  align-items: center; justify-content: center; line-height: 1;
+  backdrop-filter: blur(4px);
+}
+.image-slot.has-image:hover .slot-remove { display: flex; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
