@@ -15,6 +15,6 @@
  * anon role (the schema's row-level policies allow it).
  */
 window.APP_CONFIG = {
-  SUPABASE_URL: '',
-  SUPABASE_ANON_KEY: ''
+  SUPABASE_URL: 'https://xelgnxuwlifyxeheadg.supabase.co',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhlbGdueHV3bGlmeXhlaGVoYWRnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0OTQ3MzUsImV4cCI6MjA5OTA3MDczNX0.bCLgfb-K7CYL78pyO0XbJC3kN7b5HikR1c3pArMEzgs'
 };
