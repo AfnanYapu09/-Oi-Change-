@@ -224,7 +224,7 @@ body::after {
 
 /* ── overview: KPIs ────────────────────────────────────────────────────── */
 .wrap { max-width: 1460px; margin: 0 auto; padding: 22px 26px 60px; }
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
 .kpi { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
 .kpi-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .kpi-cap { font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
@@ -245,10 +245,10 @@ body::after {
 .today-btn { padding: 8px 16px; border-radius: 12px; border: none; background: rgba(10, 132, 255, .12); color: var(--accent); font-weight: 700; font-size: 14px; cursor: pointer; }
 .today-btn:hover { background: rgba(10, 132, 255, .2); }
 
-.dow-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 8px; }
+.dow-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
 .dow { text-align: center; font-size: 12px; font-weight: 700; padding-bottom: 2px; color: var(--ink-3); }
 .dow.we { color: var(--ink-4); }
-.week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 8px; }
+.week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
 
 .cell {
   position: relative; aspect-ratio: 1/1; min-height: 62px; border-radius: 16px;
@@ -363,7 +363,7 @@ body::after {
 .sec-name { font-size: 16px; font-weight: 800; letter-spacing: -.01em; }
 .sec-aux { font-size: 12px; color: var(--ink-3); font-weight: 500; }
 
-.img-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); gap: 14px; }
+.img-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(430px, 100%), 1fr)); gap: 14px; }
 .img-card { padding: 15px 17px; }
 .img-card-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 12px; }
 .img-card-label { font-size: 15px; font-weight: 800; }
@@ -531,7 +531,30 @@ body::after {
 
 /* iPad portrait: a touch-narrower rail so the calendar keeps room */
 @media (min-width: 721px) and (max-width: 900px) {
-  .sidebar { width: 236px; }
+  .sidebar { width: 200px; }
+  /* reclaim horizontal space so all 5 KPI cards still fit in one row */
+  .wrap { padding-left: 16px; padding-right: 16px; }
+  .kpis { gap: 10px; }
+  .kpi { padding: 12px 12px; gap: 8px; }
+  .kpi-icon { width: 24px; height: 24px; }
+  .kpi-cap { font-size: 10.5px; }
+  .kpi-val { font-size: 20px; }
+  .kpi-sub { font-size: 10px; }
+  /* 7 day-columns don't fit at a 62px floor in this width range; let cells
+     shrink shorter so the grid-track fix above doesn't just turn them into
+     tall skinny rectangles */
+  .cell { min-height: 48px; }
+}
+
+/* iPad (portrait-large and landscape): keep the calendar and the weekly
+   summary side by side instead of letting flex-wrap stack them — the combined
+   default flex-basis (580+340+16) only fits from ~1366px up, so this bracket
+   shrinks both panels' basis to something that actually fits iPad widths. */
+@media (min-width: 901px) and (max-width: 1365px) {
+  .cols { flex-wrap: nowrap; }
+  .cal-panel { flex: 1 1 460px; padding: 16px 18px; }
+  .side-panel { flex: 0 1 230px; min-width: 210px; padding: 14px 16px; }
+  .cell { min-height: 46px; }
 }
 
 @media (max-width: 720px) {
@@ -550,6 +573,15 @@ body::after {
   .main { padding: 0 8px 8px; }
   .wrap, .wrap-search, .wrap-record { padding-left: 14px; padding-right: 14px; }
   .two-col, .cols { gap: 14px; }
+  /* 5-across is too cramped on a phone; use a clean 2-per-row grid instead */
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  /* phone-width calendar: 7 columns can't hold a 62px floor without
+     overflowing; let the grid-track fix (repeat(7, minmax(0,1fr))) do its
+     job and keep cells short instead of tall skinny rectangles */
+  .cell { min-height: 34px; }
+  .cal-panel { padding: 14px 12px; }
+  .cal-title { min-width: 0; flex: 1; }
+  .cal-head { flex-wrap: wrap; row-gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   body::before { animation: none; }
