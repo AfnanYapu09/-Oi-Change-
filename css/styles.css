@@ -51,7 +51,8 @@ body {
   overflow: hidden;
   background: #DCEBFF;
 }
-button { font-family: inherit; color: inherit; }
+button { font-family: inherit; color: inherit; outline: none; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 input, textarea { font-family: inherit; outline: none; color: inherit; }
 input::placeholder, textarea::placeholder { color: var(--ink-4); }
 #app { height: 100%; }
@@ -172,9 +173,10 @@ body::after {
   -webkit-backdrop-filter: blur(36px) saturate(190%); backdrop-filter: blur(36px) saturate(190%);
   border-radius: 20px; border: 1px solid var(--glass-hair);
   box-shadow: 0 24px 60px -18px rgba(20, 50, 120, .5), var(--glass-inset);
-  padding: 8px; animation: fadeIn .14s ease;
+  padding: 8px; transform-origin: top center;
   max-height: calc(100vh - 140px); overflow-y: auto;
 }
+.menu.enter { animation: menuIn .18s cubic-bezier(.2,.7,.2,1); }
 .menu-cap { font-size: 11px; font-weight: 800; color: var(--ink-4); text-transform: uppercase; letter-spacing: .06em; padding: 6px 9px; }
 .menu-row { display: flex; align-items: center; gap: 11px; padding: 9px 9px; border-radius: 13px; cursor: pointer; transition: background .14s; }
 .menu-row:hover { background: rgba(255, 255, 255, .55); }
@@ -183,7 +185,7 @@ body::after {
 .menu-row-meta { display: block; font-size: 11px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon-btn { width: 30px; height: 30px; border-radius: 9px; border: none; background: rgba(120, 150, 210, .16); color: var(--ink-2); cursor: pointer; display: flex; align-items: center; justify-content: center; flex: none; transition: background .14s; }
 .icon-btn:hover { background: rgba(120, 150, 210, .3); }
-.menu-add { width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 9px; margin-top: 4px; border-top: 1px solid rgba(120, 150, 210, .2); background: none; border-radius: 0 0 12px 12px; cursor: pointer; color: var(--accent); font-weight: 700; font-size: 14px; }
+.menu-add { width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 9px; margin-top: 4px; background: none; border: none; border-radius: 0 0 12px 12px; cursor: pointer; color: var(--accent); font-weight: 700; font-size: 14px; }
 
 .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 13px; border-radius: 14px; border: none; margin-bottom: 4px; background: transparent; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; text-align: left; width: 100%; transition: background .16s, color .16s; }
 .nav-item:hover { background: rgba(255, 255, 255, .45); }
@@ -423,8 +425,10 @@ body::after {
 .delete-btn:hover { background: rgba(255, 59, 48, .2); }
 
 /* ── modal (asset editor) ──────────────────────────────────────────────── */
-.backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(20, 40, 90, .28); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); animation: fadeIn .2s ease; }
-.modal { width: 100%; max-width: 456px; border-radius: 28px; background: var(--glass-strong); -webkit-backdrop-filter: blur(40px) saturate(190%); backdrop-filter: blur(40px) saturate(190%); border: 1px solid var(--glass-hair); box-shadow: 0 40px 80px -20px rgba(20, 50, 120, .55), var(--glass-inset); animation: sheetIn .3s cubic-bezier(.2,.75,.2,1); max-height: calc(100vh - 48px); overflow-y: auto; }
+.backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(20, 40, 90, .28); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.backdrop.enter { animation: fadeIn .2s ease; }
+.modal { width: 100%; max-width: 456px; border-radius: 28px; background: var(--glass-strong); -webkit-backdrop-filter: blur(40px) saturate(190%); backdrop-filter: blur(40px) saturate(190%); border: 1px solid var(--glass-hair); box-shadow: 0 40px 80px -20px rgba(20, 50, 120, .55), var(--glass-inset); max-height: calc(100vh - 48px); overflow-y: auto; }
+.backdrop.enter .modal { animation: sheetIn .32s cubic-bezier(.2,.75,.2,1); }
 .modal-head { padding: 22px 24px 8px; }
 .modal-title { font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
 .modal-sub { font-size: 13px; color: var(--ink-3); margin-top: 2px; }
@@ -452,8 +456,26 @@ body::after {
 .image-slot .slot-sub { font-size: 10.5px; color: var(--ink-4); }
 .image-slot .slot-sub u { text-decoration: underline; }
 .image-slot img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
-.image-slot .slot-remove { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(10, 30, 70, .58); color: #fff; font-size: 13px; cursor: pointer; display: none; align-items: center; justify-content: center; line-height: 1; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.image-slot .slot-remove { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(10, 30, 70, .58); color: #fff; font-size: 13px; cursor: pointer; display: none; align-items: center; justify-content: center; line-height: 1; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); z-index: 2; }
 .image-slot.has-image:hover .slot-remove { display: flex; }
+.image-slot .slot-hint { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); padding: 3px 9px; border-radius: 999px; background: rgba(10, 30, 70, .55); color: #fff; font-size: 10.5px; font-weight: 600; line-height: 1; pointer-events: none; opacity: 0; transition: opacity .15s; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.image-slot.has-image:hover .slot-hint { opacity: 1; }
+/* Touch devices have no hover — always expose the view hint + remove button. */
+@media (hover: none) {
+  .image-slot .slot-remove { display: flex; }
+  .image-slot .slot-hint { opacity: 1; }
+}
+
+/* ── fullscreen image viewer ───────────────────────────────────────────────── */
+.img-viewer { position: fixed; inset: 0; z-index: 120; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 20px; background: rgba(6, 18, 40, .82); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); opacity: 0; visibility: hidden; transition: opacity .22s ease, visibility .22s; }
+.img-viewer.open { opacity: 1; visibility: visible; }
+.img-viewer-img { max-width: 94vw; max-height: 82vh; object-fit: contain; border-radius: 14px; box-shadow: 0 24px 70px rgba(0, 0, 0, .5); background: #0b1730; transform: scale(.94); transition: transform .26s cubic-bezier(.2,.75,.2,1); }
+.img-viewer.open .img-viewer-img { transform: scale(1); }
+.img-viewer-bar { display: flex; align-items: center; gap: 10px; opacity: 0; transform: translateY(-8px); transition: opacity .22s ease .03s, transform .22s ease .03s; }
+.img-viewer.open .img-viewer-bar { opacity: 1; transform: none; }
+.ivb-btn { display: inline-flex; align-items: center; gap: 7px; padding: 10px 16px; border: none; border-radius: 12px; background: rgba(255, 255, 255, .16); color: #fff; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); transition: background .15s; }
+.ivb-btn:hover { background: rgba(255, 255, 255, .28); }
+.ivb-btn.ivb-close { width: 42px; height: 42px; padding: 0; justify-content: center; font-size: 16px; }
 
 /* ── loading ───────────────────────────────────────────────────────────── */
 .loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--ink-2); }
@@ -461,6 +483,36 @@ body::after {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 90; padding: 11px 18px; border-radius: 16px; background: rgba(15, 30, 60, .82); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); color: #fff; font-size: 13px; font-weight: 600; box-shadow: 0 12px 30px -10px rgba(0, 0, 0, .5); animation: sheetIn .24s ease; }
+
+/* ── motion system ─────────────────────────────────────────────────────────
+   Entrance animations are gated by an `enter` class that app.js adds ONLY when
+   an element first appears (page switch / overlay open) — never on the frequent
+   in-place re-renders — so the UI stays calm and never re-flashes as you type. */
+@keyframes viewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes menuIn { from { opacity: 0; transform: translateY(-6px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes rowIn  { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.view.enter { animation: viewIn .34s cubic-bezier(.2,.7,.2,1); will-change: opacity, transform; }
+/* a gentle, cohesive lift for the primary panels when a page first appears */
+.view.enter .kpi,
+.view.enter .cal-panel,
+.view.enter .side-panel,
+.view.enter .filter-card,
+.view.enter .result-card,
+.view.enter .img-card { animation: rowIn .4s cubic-bezier(.2,.7,.2,1) both; }
+.view.enter .kpi:nth-child(2) { animation-delay: .03s; }
+.view.enter .kpi:nth-child(3) { animation-delay: .06s; }
+.view.enter .kpi:nth-child(4) { animation-delay: .09s; }
+.view.enter .kpi:nth-child(5) { animation-delay: .12s; }
+.view.enter .side-panel { animation-delay: .06s; }
+
+/* tactile press feedback — subtle scale-in on tap, great on iPad */
+.cell:active, .mcell:active, .chip:active, .gridopt:active, .day-chip:active,
+.menu-row:active, .result-card:active, .nav-item:active, .today-btn:active,
+.round-btn:active, .sort-btn:active, .icon-btn:active, .swatch:active,
+.news-add-btn:active, .btn-modal:active { transform: scale(.96); }
+/* ensure a smooth press even where the base rule only transitions colour */
+.nav-item, .menu-row, .today-btn, .round-btn, .sort-btn, .result-card, .chip, .gridopt, .day-chip { transition: background .16s, color .16s, transform .13s, box-shadow .16s; }
 
 /* Comfortable touch targets on iPad / touch devices (no effect with a mouse) */
 @media (pointer: coarse) {
@@ -501,5 +553,9 @@ body::after {
 }
 @media (prefers-reduced-motion: reduce) {
   body::before { animation: none; }
-  * { transition-duration: .001ms !important; }
+  *, *::before, *::after {
+    transition-duration: .001ms !important;
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
