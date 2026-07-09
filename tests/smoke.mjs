@@ -60,22 +60,28 @@ try {
   await page.waitForTimeout(300);
 
   const kpis = await page.$$eval('.kpi .kpi-val', els => els.map(e => e.textContent));
-  check('overview KPIs = [4,0,100%,5,1]', eq(kpis, ['4', '0', '100%', '5', '1']), kpis);
+  check('overview starts at zero: [0,0,0%,0,0]', eq(kpis, ['0', '0', '0%', '0', '0']), kpis);
 
   const weekly = await page.$$eval('.sum-row', els => els.slice(0, 2).map(e => e.textContent.replace(/\s+/g, ' ').trim()));
-  check('week 1 has 3 correct', /สัปดาห์ 1.*3 ถูก/.test(weekly[0] || ''), weekly);
+  check('week 1 has no data yet', /สัปดาห์ 1.*ไม่มีข้อมูล/.test(weekly[0] || ''), weekly);
 
   const mode = await page.evaluate(() => window.Store.mode);
   check('storage mode defaults to local (no config)', mode === 'local', mode);
 
+  const assetIds = await page.evaluate(() => JSON.parse(localStorage.getItem('gcjournal_v9') || '{}').assets?.map(a => a.id));
+  check('seeds exactly one asset: GC', eq(assetIds, ['gc']), assetIds);
+
   await page.click('[data-a="setPeriod"][data-v="year"]');
   await page.waitForTimeout(250);
   const yk = await page.$$eval('.kpi .kpi-val', els => els.map(e => e.textContent));
-  check('year KPIs = [50,15,77%,70,31]', eq(yk, ['50', '15', '77%', '70', '31']), yk);
+  check('year starts at zero: [0,0,0%,0,0]', eq(yk, ['0', '0', '0%', '0', '0']), yk);
   await page.click('[data-a="setPeriod"][data-v="month"]');
   await page.waitForTimeout(150);
 
-  await page.click('[data-a="openDay"][data-k="2026-07-07"]');
+  // Click whichever cell the app marks as "today" — TODAY is computed from the
+  // real clock (see app.js), so it must not be hardcoded here.
+  const todayKey = await page.$eval('.cell.today', el => el.dataset.k);
+  await page.click(`[data-a="openDay"][data-k="${todayKey}"]`);
   await page.waitForTimeout(250);
   const recOpen = await page.$('.wrap-record');
   const slots = await page.$$eval('image-slot', e => e.length);

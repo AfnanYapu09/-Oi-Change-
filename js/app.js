@@ -9,7 +9,8 @@
   'use strict';
 
   var PROPS = { resultScheme: 'blue-orange', weekStart: 'sun', showWeekends: true, defaultPeriod: 'month' };
-  var TODAY = '2026-07-07';
+  var NOW = new Date();
+  var TODAY = keyOf(NOW);
   var MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
   var MONTHS_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   var DOW = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
@@ -44,45 +45,15 @@
   function badgeStyle(colors, size, fs) { colors = colors || ['#8E8E93', '#B0B0B5']; return 'width:' + size + 'px;height:' + size + 'px;border-radius:' + Math.round(size * 0.3) + 'px;font-size:' + fs + 'px;background:linear-gradient(155deg,' + colors[1] + ',' + colors[0] + ');'; }
   function tradingDaysLabel(td) { if (!td || !td.length) return '—'; if (td.length === 7) return 'ทุกวัน · 24/7'; var wk = [1, 2, 3, 4, 5]; var isWk = td.length === 5 && wk.every(function (x) { return td.indexOf(x) > -1; }); if (isWk) return 'จันทร์–ศุกร์'; return td.slice().sort(function (a, b) { return a - b; }).map(function (i) { return DOW[i]; }).join(' '); }
 
-  // ── seeded sample data (unchanged so figures match the mockups) ───────────
-  function rng(seed) { var a = seed; return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-  function genRecords(start, end, tradingDays, seedNum) {
-    var r = rng(seedNum);
-    var news = ['รอตัวเลข CPI สหรัฐคืนนี้', 'ประชุม FOMC — แถลง Powell', 'Nonfarm Payrolls (NFP) คืนวันศุกร์', 'ดัชนี PMI ภาคการผลิตสหรัฐ', 'ความตึงเครียดภูมิรัฐศาสตร์หนุนทอง', 'ดอลลาร์อ่อนค่า หนุนราคาทอง', 'บอนด์ยีลด์สหรัฐพุ่ง กดดันทอง', 'ตัวเลขจ้างงาน ADP', 'ยอดค้าปลีกสหรัฐ', 'จีนเพิ่มทุนสำรองทองคำ'];
-    var pick = function (arr) { return arr[Math.floor(r() * arr.length)]; };
-    var rec = {};
-    for (var dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
-      var dow = dt.getDay(); if (tradingDays.indexOf(dow) === -1) continue;
-      var k = keyOf(dt);
-      var rr = r();
-      var result;
-      if (k >= '2026-07-06' && r() < 0.5) result = 'pending';
-      else result = rr < 0.64 ? 'correct' : (rr < 0.92 ? 'wrong' : 'pending');
-      var bias = pick(OPT.bias).v;
-      var up = (bias === 'buy' || bias === 'sw_up');
-      var base = Math.round((3300 + Math.round((r() - 0.5) * 130)) / 5) * 5;
-      var tSec = base + (up ? 1 : -1) * 5 * (2 + Math.floor(r() * 5));
-      var hasNews = r() < 0.42;
-      var newsList = hasNews ? [pick(news)] : [];
-      var opool = ['put_below', 'call_below', 'put_above', 'call_above'];
-      var pickN = function (arr, n) { var c = arr.slice(), o = []; for (var j = 0; j < n && c.length; j++) { o.push(c.splice(Math.floor(r() * c.length), 1)[0]); } return o; };
-      var addList = pickN(opool, 1 + Math.floor(r() * 2));
-      var wdOn = r() >= 0.3;
-      var wdList = wdOn ? pickN(opool, 1 + Math.floor(r() * 2)) : [];
-      rec[k] = { bias: bias, result: result, tMain: base, tSec: tSec, news: newsList, newsOn: hasNews, pcr: pick(OPT.pcr).v, oi: pick(OPT.oi).v, add: addList, wd: wdList, wdOn: wdOn, magnet: pick(OPT.magnet).v, iv: pick(OPT.iv).v };
-    }
-    return rec;
-  }
+  // ── starting state: one asset (GC), no records ─────────────────────────────
   function seedAll() {
-    var gc = genRecords(new Date(2026, 3, 1, 12), new Date(2026, 6, 7, 12), [1, 2, 3, 4, 5], 778821);
-    var btc = genRecords(new Date(2026, 4, 4, 12), new Date(2026, 6, 7, 12), [0, 1, 2, 3, 4, 5, 6], 220466);
-    return { assets: [{ id: 'gc', name: 'GC', sub: 'ทองคำฟิวเจอร์', badge: 'GC', colors: ['#D4A017', '#FBD34D'], tradingDays: [1, 2, 3, 4, 5] }, { id: 'btc', name: 'BTC', sub: 'Bitcoin · 24/7', badge: '฿', colors: ['#F7931A', '#FDBE5B'], tradingDays: [0, 1, 2, 3, 4, 5, 6] }], activeAssetId: 'gc', records: { gc: gc, btc: btc } };
+    return { assets: [{ id: 'gc', name: 'GC', sub: 'ทองคำฟิวเจอร์', badge: 'GC', colors: ['#D4A017', '#FBD34D'], tradingDays: [1, 2, 3, 4, 5] }], activeAssetId: 'gc', records: { gc: {} } };
   }
 
   // ── state ─────────────────────────────────────────────────────────────────
   var S = {
     page: 'overview', returnPage: 'overview', period: 'month',
-    curY: 2026, curM: 6, focusKey: TODAY,
+    curY: NOW.getFullYear(), curM: NOW.getMonth(), focusKey: TODAY,
     assets: [], activeAssetId: null, records: {},
     assetMenuOpen: false, assetEditor: null,
     draft: null, sheetKey: null, sheetIsNew: false, newsInput: '',
@@ -182,7 +153,7 @@
 
   // ── mutations ───────────────────────────────────────────────────────────────
   function setState(patch) { Object.assign(S, patch); render(); }
-  function selectAsset(id) { S.activeAssetId = id; window.Store.setActive(id); mirror(); setState({ assetMenuOpen: false, curY: 2026, curM: 6, focusKey: TODAY }); }
+  function selectAsset(id) { S.activeAssetId = id; window.Store.setActive(id); mirror(); setState({ assetMenuOpen: false, curY: NOW.getFullYear(), curM: NOW.getMonth(), focusKey: TODAY }); }
   function openAssetEditor(id) { var ed; if (id) { var a = findAsset(id); ed = { id: id, name: a.name, tradingDays: a.tradingDays.slice(), colors: (a.colors || ['#8E8E93', '#B0B0B5']).slice() }; } else { ed = { id: null, name: '', tradingDays: [1, 2, 3, 4, 5], colors: ASSET_COLORS[S.assets.length % ASSET_COLORS.length] }; } setState({ assetEditor: ed, assetMenuOpen: false }); }
   function setEditor(patch) { setState({ assetEditor: Object.assign({}, S.assetEditor, patch) }); }
   function toggleEditorDay(dow) { var td = S.assetEditor.tradingDays.slice(); var i = td.indexOf(dow); if (i > -1) td.splice(i, 1); else td.push(dow); td.sort(function (a, b) { return a - b; }); setEditor({ tradingDays: td }); }
@@ -192,7 +163,7 @@
     if (ed.id) { S.assets = S.assets.map(function (a) { return a.id === ed.id ? Object.assign({}, a, { name: name, badge: badge, tradingDays: td, colors: ed.colors }) : a; }); }
     else { var id = 'a' + Date.now().toString(36); S.assets = S.assets.concat([{ id: id, name: name, sub: '', badge: badge, colors: ed.colors, tradingDays: td }]); S.records[id] = {}; S.activeAssetId = id; window.Store.setActive(id); }
     mirror(); window.Store.putAssets(S.assets);
-    setState({ assetEditor: null, curY: 2026, curM: 6, focusKey: TODAY });
+    setState({ assetEditor: null, curY: NOW.getFullYear(), curM: NOW.getMonth(), focusKey: TODAY });
   }
   function deleteAsset(id) { if (S.assets.length <= 1) return; S.assets = S.assets.filter(function (a) { return a.id !== id; }); delete S.records[id]; if (S.activeAssetId === id) { S.activeAssetId = S.assets[0].id; window.Store.setActive(S.activeAssetId); } mirror(); window.Store.delAsset(id); setState({ assetEditor: null, assetMenuOpen: false }); }
 
@@ -224,7 +195,7 @@
   function toggleFlag(field) { S.draft = Object.assign({}, S.draft); S.draft[field] = !S.draft[field]; render(); }
   function prev() { if (S.period === 'year') setState({ curY: S.curY - 1 }); else { var m = S.curM - 1, y = S.curY; if (m < 0) { m = 11; y--; } setState({ curM: m, curY: y }); } }
   function next() { if (S.period === 'year') setState({ curY: S.curY + 1 }); else { var m = S.curM + 1, y = S.curY; if (m > 11) { m = 0; y++; } setState({ curM: m, curY: y }); } }
-  function goToday() { setState({ curY: 2026, curM: 6, focusKey: TODAY }); }
+  function goToday() { setState({ curY: NOW.getFullYear(), curM: NOW.getMonth(), focusKey: TODAY }); }
   function setFilter(dim, val) { var arr = (S.filters[dim] || []).slice(); var i = arr.indexOf(val); if (i > -1) arr.splice(i, 1); else arr.push(val); var f = Object.assign({}, S.filters); f[dim] = arr; setState({ filters: f }); }
   function clearFilters() { setState({ filters: { result: [], bias: [], news: [], pcr: [], add: [], wd: [], magnet: [], iv: [] }, search: '' }); }
 
@@ -245,18 +216,6 @@
   };
 
   // ── render pieces ────────────────────────────────────────────────────────
-  function syncPill() {
-    var st = window.Store.status();
-    var label = st === 'synced' ? '☁ ซิงก์แล้ว' : st === 'syncing' ? 'กำลังซิงก์…' : st === 'error' ? 'ซิงก์ไม่สำเร็จ' : st === 'offline' ? 'ออฟไลน์' : 'บันทึกในเครื่อง';
-    return '<span class="sync-pill ' + st + '" id="syncPill"><span class="sync-dot"></span>' + label + '</span>';
-  }
-  function updateSyncPill() {
-    var el = document.getElementById('syncPill'); if (!el) return;
-    var st = window.Store.status();
-    el.className = 'sync-pill ' + st;
-    var label = st === 'synced' ? '☁ ซิงก์แล้ว' : st === 'syncing' ? 'กำลังซิงก์…' : st === 'error' ? 'ซิงก์ไม่สำเร็จ' : st === 'offline' ? 'ออฟไลน์' : 'บันทึกในเครื่อง';
-    el.lastChild.nodeValue = label;
-  }
 
   function sidebar() {
     var a = activeAsset();
@@ -272,7 +231,7 @@
           '<button class="icon-btn" data-a="openAssetEditor" data-id="' + as.id + '">' + IC.edit + '</button></div>';
       }).join('');
       menu = '<div data-a="closeAssetMenu" style="position:fixed;inset:0;z-index:35;"></div>' +
-        '<div class="menu"><div class="menu-cap">สินทรัพย์</div>' + rows +
+        '<div class="menu' + enterCls(ENTER.menu) + '"><div class="menu-cap">สินทรัพย์</div>' + rows +
         '<button class="menu-add" data-a="addAsset"><span style="width:22px;height:22px;border-radius:7px;background:rgba(10,132,255,.14);display:flex;align-items:center;justify-content:center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span>เพิ่มสินทรัพย์</button></div>';
     }
     return '<aside class="sidebar">' +
@@ -295,7 +254,7 @@
       var dateSub = (S.sheetIsNew ? 'บันทึกใหม่' : 'แก้ไขบันทึก') + ' · ' + activeAsset().name;
       return '<button class="back-btn" data-a="closeSheet" style="flex:1;justify-content:flex-start;">' + IC.back + 'กลับ</button>' +
         '<div class="date-center"><div class="d1">' + esc(dateLabel) + '</div><div class="d2">' + esc(dateSub) + '</div></div>' +
-        '<div style="flex:1;display:flex;justify-content:flex-end;gap:10px;align-items:center;">' + syncPill() + '<button class="btn btn-primary btn-save" data-a="saveDraft">บันทึก</button></div>';
+        '<div style="flex:1;display:flex;justify-content:flex-end;gap:10px;align-items:center;"><button class="btn btn-primary btn-save" data-a="saveDraft">บันทึก</button></div>';
     }
     var right;
     if (S.page === 'overview') {
@@ -304,7 +263,7 @@
       right = '<span class="results-stat">' + filteredResults().length + ' รายการ</span>';
     }
     return '<div class="page-title">' + (S.page === 'search' ? 'ค้นหา' : 'ภาพรวม') + '</div>' +
-      '<div style="display:flex;align-items:center;gap:12px;">' + syncPill() + right + '</div>';
+      '<div style="display:flex;align-items:center;gap:12px;">' + right + '</div>';
   }
 
   function overviewBody() {
@@ -318,7 +277,7 @@
       kpi('Bias ผิด', stats.wrong, resultColor('wrong'), 'ครั้งในช่วงนี้', resultColor('wrong') === '#FF9500' ? 'rgba(255,149,0,.16)' : 'rgba(255,59,48,.16)', resultColor('wrong'), IC.x) +
       kpi('อัตราชนะ', stats.winPct + '%', resultColor('correct'), 'ถูก ' + stats.correct + ' · ผิด ' + stats.wrong, 'rgba(0,122,255,.14)', resultColor('correct'), IC.target) +
       kpi('จดทั้งหมด', stats.total, '', 'วันเทรด', 'rgba(120,140,180,.16)', '#7C8AA6', IC.cal) +
-      kpi('วันมีข่าว', stats.news, '#AF52DE', 'มีข่าวสำคัญ', 'rgba(175,82,222,.14)', '#AF52DE', IC.doc) +
+      kpi('วันมีข่าว', stats.news, '#FF3B30', 'มีข่าวสำคัญ', 'rgba(255,59,48,.14)', '#FF3B30', IC.doc) +
     '</div>';
 
     var periodLabel = S.period === 'year' ? String(S.curY + 543) : (MONTHS_FULL[S.curM] + ' ' + (S.curY + 543));
@@ -410,7 +369,7 @@
     var d = S.draft;
     var imgGroups = imageGroups().map(function (g) {
       return '<div class="card img-card"><div class="img-card-head"><span class="img-card-label">' + g.label + '</span><span class="img-card-time">' + g.time + '</span></div>' +
-        '<div class="img-slots">' + g.items.map(function (it) { return '<div class="img-slot-wrap"><div class="img-frame"><image-slot id="' + it.id + '" placeholder="' + esc(it.placeholder) + '" shape="rounded" radius="14"></image-slot></div><span class="img-slot-cap">' + esc(it.label) + '</span></div>'; }).join('') + '</div></div>';
+        '<div class="img-slots">' + g.items.map(function (it) { return '<div class="img-slot-wrap"><div class="img-frame"><image-slot id="' + it.id + '" label="' + esc(it.label) + '" placeholder="' + esc(it.placeholder) + '" shape="rounded" radius="14"></image-slot></div><span class="img-slot-cap">' + esc(it.label) + '</span></div>'; }).join('') + '</div></div>';
     }).join('');
     var imagesSection = '<div style="margin-bottom:24px;">' + secTitle('รูปภาพประกอบ', 'แยกตามช่วงเวลา') + '<div class="img-groups">' + imgGroups + '</div></div>';
 
@@ -447,7 +406,7 @@
     var ed = S.assetEditor; var nm = (ed.name || '').trim();
     var dayOpts = [0, 1, 2, 3, 4, 5, 6].map(function (i) { var on = ed.tradingDays.indexOf(i) > -1; return '<button class="day-chip' + (on ? ' on' : '') + '" data-a="editorDay" data-i="' + i + '">' + DOW[i] + '</button>'; }).join('');
     var colorOpts = ASSET_COLORS.map(function (c, idx) { var on = c[0] === ed.colors[0]; return '<button class="swatch' + (on ? ' on' : '') + '" data-a="editorColor" data-i="' + idx + '" style="background:linear-gradient(155deg,' + c[1] + ',' + c[0] + ');color:' + c[0] + ';">' + (on ? '✓' : '') + '</button>'; }).join('');
-    return '<div class="backdrop" data-a="closeEditor"><div class="modal" data-a="stop">' +
+    return '<div class="backdrop' + enterCls(ENTER.modal) + '" data-a="closeEditor"><div class="modal" data-a="stop">' +
       '<div class="modal-head"><div class="modal-title">' + (ed.id ? 'แก้ไขสินทรัพย์' : 'เพิ่มสินทรัพย์') + '</div><div class="modal-sub">ตั้งชื่อ เลือกสี และวันที่เทรด</div></div>' +
       '<div class="modal-body">' +
         '<div class="editor-name-row"><span class="badge" style="' + badgeStyle(ed.colors, 48, 18) + '">' + esc(makeBadge(ed.name)) + '</span>' +
@@ -463,6 +422,12 @@
 
   // ── render ───────────────────────────────────────────────────────────────
   var root = document.getElementById('app');
+  // Entrance animations play only when something first appears (page switch /
+  // overlay open) — never on the frequent in-place re-renders — so the UI stays
+  // calm. ENTER is recomputed each render by diffing against the previous state.
+  var RPREV = { page: null, menu: false, modal: false };
+  var ENTER = { page: false, menu: false, modal: false };
+  function enterCls(flag) { return flag ? ' enter' : ''; }
   function captureFocus() {
     var el = document.activeElement;
     if (!el || !el.dataset || el.dataset.a == null || !root.contains(el)) return null;
@@ -478,13 +443,20 @@
   }
   function render() {
     if (!S.ready) { root.innerHTML = '<div class="loading"><div class="spinner"></div><div>กำลังโหลดสมุดบันทึก…</div></div>'; return; }
+    ENTER = {
+      page: RPREV.page !== S.page,
+      menu: S.assetMenuOpen && !RPREV.menu,
+      modal: !!S.assetEditor && !RPREV.modal
+    };
     var focus = captureFocus();
     var scEl = root.querySelector('.scroll'); var scroll = scEl ? scEl.scrollTop : 0;
     var body = S.page === 'overview' ? overviewBody() : S.page === 'search' ? searchBody() : recordBody();
     root.innerHTML = '<div class="shell">' + sidebar() +
-      '<main class="main"><header class="topbar">' + topbar() + '</header><div class="scroll">' + body + '</div></main></div>' + assetEditorModal();
+      '<main class="main"><header class="topbar">' + topbar() + '</header>' +
+      '<div class="scroll"><div class="view' + enterCls(ENTER.page) + '">' + body + '</div></div></main></div>' + assetEditorModal();
     var s2 = root.querySelector('.scroll'); if (s2) s2.scrollTop = scroll;
     restoreFocus(focus);
+    RPREV = { page: S.page, menu: S.assetMenuOpen, modal: !!S.assetEditor };
   }
 
   // ── delegation ───────────────────────────────────────────────────────────
@@ -527,7 +499,12 @@
     if (a === 'input') { if (NUMERIC[el.dataset.k]) setFieldSilent(el.dataset.k, el.value); }
     else if (a === 'search') { setState({ search: el.value }); }
     else if (a === 'newsInput') { S.newsInput = el.value; }
-    else if (a === 'editorName') { setEditor({ name: el.value }); }
+    else if (a === 'editorName') {
+      S.assetEditor = Object.assign({}, S.assetEditor, { name: el.value });
+      var nm = el.value.trim();
+      var badgeEl = root.querySelector('.editor-name-row .badge'); if (badgeEl) badgeEl.textContent = makeBadge(el.value);
+      var saveBtn = root.querySelector('[data-a="saveAsset"]'); if (saveBtn) saveBtn.style.cssText = nm ? '' : 'opacity:.5;cursor:not-allowed;';
+    }
   });
   root.addEventListener('keydown', function (e) {
     var el = e.target; if (el.dataset && el.dataset.a === 'newsInput' && e.key === 'Enter') { e.preventDefault(); addNewsItem(); }
@@ -535,7 +512,14 @@
   });
 
   // ── boot ─────────────────────────────────────────────────────────────────
-  window.Store.onStatus(updateSyncPill);
+  // A background reconcile (after connectivity returns) refreshes on-screen data,
+  // but never while the user is mid-edit on the record sheet.
+  window.Store.onReload(function (data) {
+    if (!S.ready || S.page === 'record') return;
+    S.assets = data.assets; S.records = data.records;
+    S.activeAssetId = data.activeAssetId || S.activeAssetId;
+    render();
+  });
   render(); // loading screen
   window.Store.load(seedAll).then(function (data) {
     S.assets = data.assets; S.records = data.records; S.activeAssetId = data.activeAssetId; S.ready = true;
