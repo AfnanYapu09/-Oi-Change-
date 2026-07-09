@@ -4,3 +4,4 @@ package-lock.json
 .DS_Store
 /test-results/
 /playwright-report/
+.claude/
