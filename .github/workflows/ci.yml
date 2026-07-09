@@ -21,6 +21,8 @@ jobs:
           for f in js/*.js tests/*.mjs; do echo "→ $f"; node --check "$f"; done
       - name: Validate manifest.webmanifest
         run: node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8')); console.log('manifest.webmanifest is valid JSON')"
+      - name: Guard against committed Supabase credentials
+        run: node scripts/check-config-secrets.js
 
   smoke:
     name: Browser smoke test
