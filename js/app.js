@@ -521,7 +521,8 @@
     render();
   });
   render(); // loading screen
-  window.Store.load(seedAll).then(function (data) {
+  Promise.all([window.Store.load(seedAll), window.ImageStore.ready]).then(function (results) {
+    var data = results[0];
     S.assets = data.assets; S.records = data.records; S.activeAssetId = data.activeAssetId; S.ready = true;
     render();
   });

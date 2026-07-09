@@ -1,8 +1,20 @@
 /*
  * image-slot.js — a focused re-implementation of the design's <image-slot>.
  * Empty state shows "วาง / เลือกรูป · or browse files"; accepts click-to-browse,
- * drag-and-drop, and paste (when hovered). Images persist as data URLs in
- * localStorage keyed by the slot id, so they survive re-renders and reloads.
+ * drag-and-drop, and paste (when hovered). Images persist in IndexedDB (database
+ * "gcjournal_images_db", store "images", keyed by slot id), mirrored into an
+ * in-memory Map so every existing call site (render, openViewer, etc.) can keep
+ * reading images SYNCHRONOUSLY via getImage() — only the one-time boot load (plus
+ * a one-time migration from the old localStorage key) and the background writes
+ * are async. IndexedDB's much larger quota (vs. localStorage's ~5MB on iOS
+ * Safari) is what actually fixes the "storage full after ~5 photos" bug; new
+ * uploads are additionally downscaled/re-encoded via canvas when large, to keep
+ * typical chart screenshots small on disk.
+ *
+ * Boot contract: window.ImageStore.ready is a Promise that resolves once the
+ * in-memory Map is fully populated (migration, if any, included). app.js awaits
+ * it (alongside window.Store.load) before flipping S.ready = true, so the
+ * loading screen covers image warm-up too — no flash of missing images.
  *
  * Filled slots open a fullscreen viewer on tap (view / save-to-device / replace),
  * so it works the same on desktop, iPad and phones — no hover required.
@@ -10,30 +22,188 @@
 (function () {
   'use strict';
 
-  var STORE_KEY = 'gcjournal_images_v1';
-  function loadStore() {
-    try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}') || {}; }
-    catch (e) { return {}; }
+  // ── IndexedDB-backed image store, mirrored into a synchronous in-memory Map ──
+  var LEGACY_KEY = 'gcjournal_images_v1';   // old localStorage blob (pre-migration)
+  var DB_NAME = 'gcjournal_images_db';
+  var DB_STORE = 'images';
+  var DB_VERSION = 1;
+
+  var imageCache = new Map();               // slotId -> dataURL; sole source of truth for getImage()
+  var dbPromise = null;
+
+  function openDb() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('IndexedDB unavailable')); return; }
+      var req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = function () {
+        var db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error || new Error('IndexedDB open failed')); };
+    });
+    return dbPromise;
   }
-  function saveStore(map) {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(map)); return true; }
-    catch (e) { return false; }
+  function idbGetAll(db) {
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(DB_STORE, 'readonly');
+      var store = tx.objectStore(DB_STORE);
+      var keysReq = store.getAllKeys(), valsReq = store.getAll();
+      tx.oncomplete = function () {
+        var keys = keysReq.result || [], vals = valsReq.result || [], out = [];
+        for (var i = 0; i < keys.length; i++) out.push([keys[i], vals[i]]);
+        resolve(out);
+      };
+      tx.onerror = function () { reject(tx.error); };
+    });
   }
-  function getImage(id) { return loadStore()[id] || null; }
+  function idbPut(db, id, dataUrl) {
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).put(dataUrl, id);
+      tx.oncomplete = function () { resolve(); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  }
+  function idbDelete(db, id) {
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).delete(id);
+      tx.oncomplete = function () { resolve(); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  }
+  function idbPutMany(db, entries) {   // [[id, dataUrl], ...] — single all-or-nothing transaction
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(DB_STORE, 'readwrite');
+      var store = tx.objectStore(DB_STORE);
+      entries.forEach(function (e) { store.put(e[1], e[0]); });
+      tx.oncomplete = function () { resolve(); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  }
+  // One-time boot: migrate any pre-existing localStorage images into IndexedDB
+  // (lossless — the old key is only cleared once every entry is confirmed
+  // written), then populate imageCache from IndexedDB. If IndexedDB itself is
+  // unavailable, or the migration write fails partway, the old localStorage
+  // data is left untouched and served from memory for this session instead.
+  function migrateAndLoad() {
+    var legacyRaw = null;
+    try { legacyRaw = localStorage.getItem(LEGACY_KEY); } catch (e) {}
+    return openDb().then(function (db) {
+      // Always read what's already in IndexedDB first. This makes migration
+      // idempotent/merge-safe: if a previous migration wrote everything to
+      // IndexedDB but the subsequent localStorage.removeItem(LEGACY_KEY) call
+      // itself threw (leaving the stale legacy blob in place), re-running this
+      // on a later boot must NOT blindly re-copy the old entries over slot ids
+      // that already hold newer data in IndexedDB.
+      return idbGetAll(db).then(function (existing) {
+        existing.forEach(function (e) { imageCache.set(e[0], e[1]); });
+        if (!legacyRaw) return;
+        var legacyMap;
+        try { legacyMap = JSON.parse(legacyRaw) || {}; } catch (e) { legacyMap = {}; }
+        var existingKeys = {};
+        existing.forEach(function (e) { existingKeys[e[0]] = true; });
+        var entries = Object.keys(legacyMap)
+          .filter(function (k) { return !existingKeys[k]; }) // never clobber data already in IndexedDB
+          .map(function (k) { return [k, legacyMap[k]]; });
+        if (!entries.length) {
+          // Nothing left to migrate (either the blob was empty, or every key it
+          // held already exists in IndexedDB from a prior successful migration)
+          // — safe to drop the legacy key now.
+          try { localStorage.removeItem(LEGACY_KEY); } catch (e) {}
+          return;
+        }
+        return idbPutMany(db, entries).then(function () {
+          entries.forEach(function (e) { imageCache.set(e[0], e[1]); });
+          try { localStorage.removeItem(LEGACY_KEY); } catch (e) {}
+          console.info('[ImageStore] migrated ' + entries.length + ' image(s) from localStorage to IndexedDB.');
+        }).catch(function (err) {
+          console.error('[ImageStore] migration to IndexedDB failed partway — leaving the old localStorage data ' +
+            '("' + LEGACY_KEY + '") intact so nothing is lost; serving those images from memory for this session only.', err);
+          entries.forEach(function (e) { imageCache.set(e[0], e[1]); });
+        });
+      });
+    }).catch(function (err) {
+      console.error('[ImageStore] IndexedDB unavailable — falling back to localStorage for this session; ' +
+        'the old key is left in place untouched.', err);
+      if (legacyRaw) {
+        try {
+          var m = JSON.parse(legacyRaw) || {};
+          Object.keys(m).forEach(function (k) { imageCache.set(k, m[k]); });
+        } catch (e) {}
+      }
+    });
+  }
+
+  // Exposed boot-readiness hook: app.js awaits this (alongside Store.load) before render.
+  window.ImageStore = { ready: migrateAndLoad() };
+
+  function getImage(id) { return imageCache.has(id) ? imageCache.get(id) : null; }
+
+  // Latches to a single alert per session if background persistence starts
+  // failing (e.g. IndexedDB itself is out of quota, or unavailable in this
+  // browsing context) — cleared again the next time a write actually
+  // succeeds, so a later *new* failure can still surface a fresh warning.
+  // Without this, a real persistence failure would previously be swallowed
+  // into a console.warn only: the UI shows the image as saved (the Map/UI
+  // already reflect it synchronously) but it silently evaporates on the next
+  // reload/tab close with zero indication to the user — a data-loss risk.
+  var persistFailureWarned = false;
   function setImage(id, dataUrl) {
-    var m = loadStore();
-    if (dataUrl) m[id] = dataUrl; else delete m[id];
-    return saveStore(m);
+    if (dataUrl) imageCache.set(id, dataUrl); else imageCache.delete(id);
+    // Persist in the background — the Map (and thus the UI) is already up to
+    // date, so a slow or failing IndexedDB write must never block the caller.
+    // The outcome is still surfaced to the user (once) on failure, below.
+    var writeDone = openDb().then(function (db) { return dataUrl ? idbPut(db, id, dataUrl) : idbDelete(db, id); });
+    writeDone.then(function () {
+      persistFailureWarned = false; // writes are working again — allow a future failure to warn anew
+    }, function (err) {
+      console.warn('[ImageStore] failed to persist image "' + id + '" to IndexedDB — it exists only in memory ' +
+        'for this session and will be LOST on reload or tab close:', err);
+      if (dataUrl && !persistFailureWarned) {
+        persistFailureWarned = true;
+        alert('ไม่สามารถบันทึกรูปลงเครื่องอย่างถาวรได้ (พื้นที่จัดเก็บอาจเต็มหรือใช้งานไม่ได้)\n' +
+          'รูปนี้จะแสดงอยู่ในหน้านี้เท่านั้น และจะหายไปเมื่อปิดหรือรีเฟรชหน้า — กรุณาลบรูปเก่าที่ไม่จำเป็น หรือบันทึกรูปนี้ไว้ที่อื่นก่อน');
+      }
+    });
+    return writeDone;
   }
 
   var ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"></rect><circle cx="8.5" cy="10" r="1.6"></circle><path d="M4 17l4.5-4 3.5 3 3-3.5L20 17"></path></svg>';
 
   var hoveredSlot = null;
 
+  // ── downscale/re-encode freshly-picked uploads only (never images being read
+  // back for display/replace/migration) ───────────────────────────────────────
+  var COMPRESS_MAX_DIM = 1600;
+  var COMPRESS_QUALITY = 0.82;
+  function compressIfNeeded(dataUrl, cb) {
+    var img = new Image();
+    img.onload = function () {
+      var w = img.naturalWidth, h = img.naturalHeight;
+      if (w <= COMPRESS_MAX_DIM && h <= COMPRESS_MAX_DIM) { cb(dataUrl); return; } // already small: skip re-encoding
+      var scale = COMPRESS_MAX_DIM / Math.max(w, h);
+      var tw = Math.max(1, Math.round(w * scale)), th = Math.max(1, Math.round(h * scale));
+      try {
+        var canvas = document.createElement('canvas');
+        canvas.width = tw; canvas.height = th;
+        canvas.getContext('2d').drawImage(img, 0, 0, tw, th);
+        cb(canvas.toDataURL('image/jpeg', COMPRESS_QUALITY));
+      } catch (e) {
+        console.warn('[ImageStore] compression failed, storing original image:', e);
+        cb(dataUrl);
+      }
+    };
+    img.onerror = function () { cb(dataUrl); }; // couldn't decode for resizing — store as-is rather than lose it
+    img.src = dataUrl;
+  }
+
   function fileToDataUrl(file, cb) {
     if (!file || !/^image\//.test(file.type)) return;
     var reader = new FileReader();
-    reader.onload = function () { cb(reader.result); };
+    reader.onload = function () { compressIfNeeded(reader.result, cb); };
     reader.readAsDataURL(file);
   }
 
@@ -182,8 +352,11 @@
     }
 
     store(url) {
-      var ok = setImage(this.slotId, url);
-      if (!ok) { alert('พื้นที่จัดเก็บเต็ม — ไม่สามารถบันทึกรูปได้'); return; }
+      // setImage() updates the in-memory cache synchronously (so render()
+      // below always reflects it immediately) and persists to IndexedDB in
+      // the background; if that background write fails, setImage() itself
+      // surfaces a one-time warning to the user — see its definition.
+      setImage(this.slotId, url);
       this.render();
     }
     clear() { setImage(this.slotId, null); this.render(); }
