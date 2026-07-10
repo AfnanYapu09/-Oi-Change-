@@ -548,10 +548,37 @@ body::after {
    default flex-basis (580+340+16) only fits from ~1366px up, so this bracket
    shrinks both panels' basis to something that actually fits iPad widths. */
 @media (min-width: 901px) and (max-width: 1365px) {
+  /* Narrower rail frees width for the calendar + weekly summary. */
+  .sidebar { width: 196px; padding: 14px 12px; }
   .cols { flex-wrap: nowrap; }
-  .cal-panel { flex: 1 1 460px; padding: 16px 18px; }
-  .side-panel { flex: 0 1 230px; min-width: 210px; padding: 14px 16px; }
-  .cell { min-height: 46px; }
+  .cal-panel { flex: 1 1 540px; padding: 14px 16px; }
+  .side-panel { flex: 0 1 270px; min-width: 240px; padding: 12px 14px; }
+  /* Decouple day-cell height from its (now wider) width — aspect-ratio:1/1
+     would otherwise make cells taller as the calendar gets wider, fighting
+     the whole point of this bracket: fit one screen's height with no
+     vertical scroll on an iPad in landscape. */
+  .cell { aspect-ratio: auto; height: 54px; min-height: 0; padding: 8px 10px; }
+  .cell-num { font-size: 14px; }
+  /* Trim vertical rhythm throughout the overview so the full page (KPIs +
+     calendar + weekly summary) fits one landscape iPad screen without
+     scrolling — but not so tight that it leaves a dead gap under the cards;
+     tuned to ~80-120px of slack at common iPad landscape sizes (1024x768 up
+     to 1194x834), enough to absorb a real Safari toolbar without a scroll. */
+  .main { padding: 10px 10px 0; }
+  .topbar { min-height: 52px; padding: 7px 18px; margin-bottom: 10px; }
+  .wrap { padding: 16px 18px 18px; }
+  .kpis { gap: 12px; margin-bottom: 16px; }
+  .kpi { padding: 13px 14px; gap: 8px; }
+  .kpi-icon { width: 26px; height: 26px; }
+  .kpi-val { font-size: 25px; }
+  .cal-head { margin-bottom: 11px; }
+  .dow-row { margin-bottom: 6px; }
+  .week { margin-bottom: 6px; }
+  .legend { margin-top: 10px; padding-top: 10px; }
+  .side-title { margin-bottom: 4px; }
+  .side-sub { margin-bottom: 10px; }
+  .sum-row { padding: 9px 0; }
+  .sum-top { margin-bottom: 6px; }
 }
 
 @media (max-width: 720px) {
