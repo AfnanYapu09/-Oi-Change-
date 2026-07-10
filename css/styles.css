@@ -108,7 +108,7 @@ body::after {
 /* ── shell ─────────────────────────────────────────────────────────────── */
 .shell {
   display: flex; width: 100%; overflow: hidden;
-  height: 100vh; height: 100dvh; /* dvh keeps it stable in iPad standalone */
+  height: 100vh; height: 100dvh; /* dvh keeps it stable when a mobile browser's chrome collapses/expands */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
@@ -520,7 +520,7 @@ body::after {
 .view.enter .kpi:nth-child(5) { animation-delay: .12s; }
 .view.enter .side-panel { animation-delay: .06s; }
 
-/* tactile press feedback — subtle scale-in on tap, great on iPad */
+/* tactile press feedback — subtle scale-in on tap, great on touchscreens */
 .cell:active, .mcell:active, .chip:active, .gridopt:active, .day-chip:active,
 .menu-row:active, .result-card:active, .nav-item:active, .today-btn:active,
 .round-btn:active, .sort-btn:active, .icon-btn:active, .swatch:active,
@@ -528,7 +528,7 @@ body::after {
 /* ensure a smooth press even where the base rule only transitions colour */
 .nav-item, .menu-row, .today-btn, .round-btn, .sort-btn, .result-card, .chip, .gridopt, .day-chip { transition: background .16s, color .16s, transform .13s, box-shadow .16s; }
 
-/* Comfortable touch targets on iPad / touch devices (no effect with a mouse) */
+/* Comfortable touch targets on tablets / touch devices (no effect with a mouse) */
 @media (pointer: coarse) {
   .nav-item, .btn-record, .btn-save, .btn-primary, .today-btn, .sort-btn { min-height: 44px; }
   .chip { padding: 11px 16px; }
@@ -543,7 +543,9 @@ body::after {
   .search-input { padding-top: 16px; padding-bottom: 16px; }
 }
 
-/* iPad portrait: a touch-narrower rail so the calendar keeps room */
+/* Narrow/small tablets in portrait: a touch-narrower rail so the calendar
+   keeps room. The Xiaomi Pad 6S Pro's own portrait width lands above this
+   range (see the 901-1750px bracket below), so this covers smaller tablets. */
 @media (min-width: 721px) and (max-width: 900px) {
   .sidebar { width: 200px; }
   /* reclaim horizontal space so all 5 KPI cards still fit in one row */
@@ -560,11 +562,18 @@ body::after {
   .cell { min-height: 48px; }
 }
 
-/* iPad (portrait-large and landscape): keep the calendar and the weekly
-   summary side by side instead of letting flex-wrap stack them — the combined
-   default flex-basis (580+340+16) only fits from ~1366px up, so this bracket
-   shrinks both panels' basis to something that actually fits iPad widths. */
-@media (min-width: 901px) and (max-width: 1365px) {
+/* Xiaomi Pad 6S Pro (12.4", 3048x2032 native, 294 PPI, 3:2 aspect) — the
+   primary large-tablet target. Xiaomi doesn't publish the Chrome-reported
+   CSS/logical viewport, so this bracket is sized from the physical specs: at
+   plausible devicePixelRatios (1.75-2.2) the CSS viewport lands roughly in
+   923-1742px depending on axis and orientation, so 901-1750px covers it in
+   both landscape (short/wide) and portrait (tall/narrower) — verified at
+   several points across that span, not just one guessed exact number.
+   Keeps the calendar and weekly summary side by side instead of letting
+   flex-wrap stack them (the combined default flex-basis 580+340+16 only
+   fits above ~1366px, so this bracket shrinks both panels' basis to
+   something that actually fits here too). */
+@media (min-width: 901px) and (max-width: 1750px) {
   /* Rail keeps its full 268px width here — collapse it (topbar toggle) to give
      the calendar the whole frame instead of permanently shrinking the rail. */
   .cols { flex-wrap: nowrap; }
@@ -573,10 +582,10 @@ body::after {
   /* Decouple day-cell height from its (now wider) width — aspect-ratio:1/1
      would otherwise make cells taller as the calendar gets wider, fighting
      the whole point of this bracket: fit one screen's height with no
-     vertical scroll on an iPad in landscape. Height itself is no longer
-     fixed — see the stretch-to-fill block below, which grows week rows
-     (and therefore cells) to consume any leftover vertical space instead
-     of leaving it empty under the card. */
+     vertical scroll. Height itself is no longer fixed — see the
+     stretch-to-fill block below, which grows week rows (and therefore
+     cells) to consume any leftover vertical space instead of leaving it
+     empty under the card. */
   .cell { aspect-ratio: auto; min-height: 0; padding: 8px 10px; }
   .cell-num { font-size: 14px; }
   /* Stretch-to-fill: when the KPI row + calendar + summary are shorter than
@@ -586,22 +595,46 @@ body::after {
      panels; .cal-panel distributes its extra height across its week rows
      (grid's default align-items/content:stretch then grows the day cells
      inside each row, since .cell no longer has a fixed height); .side-panel
-     grows each summary row and centers its content within the extra room. */
+     grows each summary row and centers its content within the extra room.
+     max-height caps stop rows from growing absurdly tall in this device's
+     portrait orientation, where width lands in this same bracket (923px+)
+     but height can run to ~1740px — past the cap, the leftover space is
+     just a harmless gap instead of comically oversized cells. */
   .view { display: flex; flex-direction: column; min-height: 100%; }
-  .wrap { flex: 1; display: flex; flex-direction: column; }
+  /* margin:0 auto (base rule, for centering on ultra-wide desktop) fights
+     stretch on a flex item: per spec, auto cross-axis margins on a flex item
+     suppress align-items:stretch and shrink-wrap the item's content instead,
+     which silently broke the width side of this stretch-to-fill chain (only
+     noticed via direct measurement — it happened to look fine on screen
+     because .cols' own flex-grow still filled whatever narrower box .wrap
+     shrank to). Override margin to 0 here so .wrap actually stretches full
+     width instead of centering a shrunk box. */
+  /* justify-content:center: once .cols hits its own max-height (below) any
+     further leftover frame height — the extreme case this device's portrait
+     orientation can produce, up to ~1740px tall against only ~950px of
+     capped content — becomes balanced margin above and below the KPI +
+     calendar block, instead of empty space stuck under the cards. */
+  .wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; margin: 0; }
   .kpis { flex: none; }
-  .cols { flex: 1; align-items: stretch; }
+  /* max-height caps .cols itself (not just the rows inside — see .week/
+     .sum-row below) so the cards stop growing past a sensible size and any
+     further leftover becomes .wrap's centered margin instead of stretching
+     the cards into mostly-empty boxes. 1000px comfortably clears every
+     verified-good landscape case in this bracket (measured up to ~948px at
+     the widest, 1742x1161) so it never kicks in there — it only engages in
+     this device's much taller portrait orientation. */
+  .cols { flex: 1; max-height: 1000px; align-items: stretch; }
   .cal-panel { display: flex; flex-direction: column; }
   .cal-head, .dow-row, .legend { flex: none; }
-  .week { flex: 1; }
+  .week { flex: 1; max-height: 92px; }
   .side-panel { display: flex; flex-direction: column; }
   .side-title, .side-sub { flex: none; }
-  .sum-row { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .sum-row { flex: 1; max-height: 84px; display: flex; flex-direction: column; justify-content: center; }
   /* Trim vertical rhythm throughout the overview so the full page (KPIs +
-     calendar + weekly summary) fits one landscape iPad screen without
-     scrolling — but not so tight that it leaves a dead gap under the cards;
-     tuned to ~80-120px of slack at common iPad landscape sizes (1024x768 up
-     to 1194x834), enough to absorb a real Safari toolbar without a scroll. */
+     calendar + weekly summary) fits one tablet screen without scrolling —
+     but not so tight that it leaves a dead gap under the cards; tuned with
+     margin to spare across the whole bracket's size range, enough to absorb
+     real browser-chrome overhead without a scroll. */
   .main { padding: 10px 10px 0; }
   .topbar { min-height: 52px; padding: 7px 18px; margin-bottom: 10px; }
   .wrap { padding: 16px 18px 18px; }

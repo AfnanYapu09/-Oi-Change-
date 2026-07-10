@@ -43,7 +43,7 @@
  * after it resolves, without gating it.
  *
  * Filled slots open a fullscreen viewer on tap (view / save-to-device / replace),
- * so it works the same on desktop, iPad and phones — no hover required.
+ * so it works the same on desktop, tablets and phones — no hover required.
  */
 (function () {
   'use strict';
