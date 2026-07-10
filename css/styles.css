@@ -69,7 +69,7 @@ body::before {
     radial-gradient(46% 50% at 74% 82%, rgba(120, 120, 255, .48), transparent 70%),
     radial-gradient(40% 44% at 26% 88%, rgba(70, 200, 235, .48), transparent 72%),
     linear-gradient(160deg, #DCEBFF 0%, #CFE2FF 45%, #D6D9FF 100%);
-  filter: saturate(112%);
+  filter: blur(70px) saturate(112%);
   animation: drift 26s ease-in-out infinite alternate;
 }
 body::after {
