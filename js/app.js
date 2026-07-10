@@ -59,7 +59,10 @@
     draft: null, sheetKey: null, sheetIsNew: false, newsInput: '',
     search: '', sortDir: 'desc', filtersOpen: false,
     filters: { result: [], bias: [], news: [], pcr: [], add: [], wd: [], magnet: [], iv: [] },
-    ready: false
+    ready: false,
+    // Collapsible left rail (persisted). Open by default; collapse to give the
+    // calendar the full frame width. Read once at boot from localStorage.
+    railOpen: (function () { try { return localStorage.getItem('gcjournal_rail') !== '0'; } catch (e) { return true; } })()
   };
   function activeAsset() { for (var i = 0; i < S.assets.length; i++) { if (S.assets[i].id === S.activeAssetId) return S.assets[i]; } return S.assets[0]; }
   function findAsset(id) { for (var i = 0; i < S.assets.length; i++) { if (S.assets[i].id === id) return S.assets[i]; } return null; }
@@ -212,7 +215,9 @@
     target: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3.5"></circle></svg>',
     cal: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"></rect><path d="M3.5 9.5h17M8 3v4M16 3v4"></path></svg>',
     doc: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="3.5" width="15" height="17" rx="2.5"></rect><path d="M8 8.5h8M8 12.5h8M8 16.5h5"></path></svg>',
-    back: '<svg width="10" height="16" viewBox="0 0 9 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5L2 7.5l5.5 6"></path></svg>'
+    back: '<svg width="10" height="16" viewBox="0 0 9 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5L2 7.5l5.5 6"></path></svg>',
+    menu: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>',
+    panel: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M9 4v16"></path></svg>'
   };
 
   // ── render pieces ────────────────────────────────────────────────────────
@@ -262,7 +267,8 @@
     } else {
       right = '<span class="results-stat">' + filteredResults().length + ' รายการ</span>';
     }
-    return '<div class="page-title">' + (S.page === 'search' ? 'ค้นหา' : 'ภาพรวม') + '</div>' +
+    var toggle = '<button class="rail-toggle" data-a="toggleRail" aria-label="สลับแถบเมนู" title="ซ่อน/แสดงแถบเมนู">' + (S.railOpen ? IC.panel : IC.menu) + '</button>';
+    return '<div style="display:flex;align-items:center;gap:12px;min-width:0;">' + toggle + '<div class="page-title">' + (S.page === 'search' ? 'ค้นหา' : 'ภาพรวม') + '</div></div>' +
       '<div style="display:flex;align-items:center;gap:12px;">' + right + '</div>';
   }
 
@@ -451,7 +457,7 @@
     var focus = captureFocus();
     var scEl = root.querySelector('.scroll'); var scroll = scEl ? scEl.scrollTop : 0;
     var body = S.page === 'overview' ? overviewBody() : S.page === 'search' ? searchBody() : recordBody();
-    root.innerHTML = '<div class="shell">' + sidebar() +
+    root.innerHTML = '<div class="shell' + (S.railOpen ? '' : ' rail-collapsed') + '">' + sidebar() +
       '<main class="main"><header class="topbar">' + topbar() + '</header>' +
       '<div class="scroll"><div class="view' + enterCls(ENTER.page) + '">' + body + '</div></div></main></div>' + assetEditorModal();
     var s2 = root.querySelector('.scroll'); if (s2) s2.scrollTop = scroll;
@@ -469,6 +475,7 @@
     addAsset: function () { openAssetEditor(null); },
     navOverview: function () { setState({ page: 'overview' }); },
     navSearch: function () { setState({ page: 'search' }); },
+    toggleRail: function () { S.railOpen = !S.railOpen; try { localStorage.setItem('gcjournal_rail', S.railOpen ? '1' : '0'); } catch (e) {} render(); },
     addToday: function () { openDay(TODAY); },
     prev: prev, next: next, today: goToday,
     setPeriod: function (ds) { setState({ period: ds.v }); },

@@ -137,6 +137,23 @@ body::after {
 .scroll { flex: 1; overflow: auto; min-height: 0; border-radius: 22px 22px 0 0; }
 .scroll::-webkit-scrollbar { width: 9px; }
 
+/* ── collapsible left rail ─────────────────────────────────────────────────
+   A toggle in the topbar hides the sidebar so the calendar/overview take the
+   full frame width. State is persisted (gcjournal_rail). Instant toggle (no
+   animation) because render() rebuilds the DOM each time — a CSS transition
+   would not fire on a freshly-created element, and a keyframe would replay on
+   every unrelated re-render (the codebase deliberately gates entrance anims). */
+.rail-toggle {
+  width: 40px; height: 40px; flex: none; cursor: pointer;
+  border-radius: 12px; border: 1px solid rgba(255, 255, 255, .6);
+  background: rgba(255, 255, 255, .5); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  transition: background .14s, transform .13s;
+}
+.rail-toggle:hover { background: rgba(255, 255, 255, .78); }
+.rail-toggle:active { transform: scale(.94); }
+.shell.rail-collapsed .sidebar { display: none; }
+
 /* ── typography helpers ────────────────────────────────────────────────── */
 .page-title { font-size: 23px; font-weight: 800; letter-spacing: -.02em; }
 .h-strong { font-size: 16px; font-weight: 800; letter-spacing: -.01em; }
@@ -548,8 +565,8 @@ body::after {
    default flex-basis (580+340+16) only fits from ~1366px up, so this bracket
    shrinks both panels' basis to something that actually fits iPad widths. */
 @media (min-width: 901px) and (max-width: 1365px) {
-  /* Narrower rail frees width for the calendar + weekly summary. */
-  .sidebar { width: 196px; padding: 14px 12px; }
+  /* Rail keeps its full 268px width here — collapse it (topbar toggle) to give
+     the calendar the whole frame instead of permanently shrinking the rail. */
   .cols { flex-wrap: nowrap; }
   .cal-panel { flex: 1 1 540px; padding: 14px 16px; }
   .side-panel { flex: 0 1 270px; min-width: 240px; padding: 12px 14px; }
@@ -583,7 +600,11 @@ body::after {
 
 @media (max-width: 720px) {
   /* Turn the rail into a horizontal top bar so nav, asset switch, and the
-     record button stay reachable on phones. */
+     record button stay reachable on phones. The collapse feature is desktop/
+     tablet-only: keep the bar visible and hide the toggle here regardless of
+     the persisted rail state. */
+  .rail-toggle { display: none; }
+  .shell.rail-collapsed .sidebar { display: flex; }
   .shell { flex-direction: column; }
   .sidebar { width: auto; margin: 8px 8px 0; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; padding: 9px 11px; }
   .sidebar .brand { margin-bottom: 0; flex: none; }
