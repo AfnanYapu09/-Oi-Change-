@@ -64,12 +64,12 @@ body::before {
   position: fixed; inset: -20%;
   z-index: -2;
   background:
-    radial-gradient(38% 42% at 18% 22%, rgba(90, 170, 255, .70), transparent 70%),
-    radial-gradient(34% 40% at 82% 16%, rgba(120, 210, 255, .60), transparent 70%),
-    radial-gradient(46% 50% at 74% 82%, rgba(120, 120, 255, .48), transparent 70%),
-    radial-gradient(40% 44% at 26% 88%, rgba(70, 200, 235, .48), transparent 72%),
-    linear-gradient(160deg, #DCEBFF 0%, #CFE2FF 45%, #D6D9FF 100%);
-  filter: blur(70px) saturate(112%);
+    radial-gradient(38% 42% at 18% 22%, rgba(90, 170, 255, .48), transparent 70%),
+    radial-gradient(34% 40% at 82% 16%, rgba(120, 210, 255, .40), transparent 70%),
+    radial-gradient(46% 50% at 74% 82%, rgba(120, 120, 255, .32), transparent 70%),
+    radial-gradient(40% 44% at 26% 88%, rgba(70, 200, 235, .32), transparent 72%),
+    linear-gradient(160deg, #E8F1FF 0%, #DFEBFF 45%, #E4E6FF 100%);
+  filter: blur(110px) saturate(100%);
   animation: drift 26s ease-in-out infinite alternate;
 }
 body::after {
