@@ -28,6 +28,23 @@ jobs:
           mkdir _site
           cp index.html manifest.webmanifest _site/
           cp -r css js assets _site/
+      - name: Inject Supabase credentials into the deployed config.js
+        # js/config.js stays blank in git (see scripts/check-config-secrets.js —
+        # never commit real credentials); this writes the real values only into
+        # the built _site artifact, from repo secrets, so the live site can sync
+        # to the cloud without the key ever touching git history. If the secrets
+        # aren't set, this renders blank values and the deploy behaves exactly
+        # as before (local-only), so it's always safe to run.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          cat > _site/js/config.js <<EOF
+          window.APP_CONFIG = {
+            SUPABASE_URL: '${SUPABASE_URL}',
+            SUPABASE_ANON_KEY: '${SUPABASE_ANON_KEY}'
+          };
+          EOF
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
