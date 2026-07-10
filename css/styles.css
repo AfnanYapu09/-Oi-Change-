@@ -75,7 +75,15 @@ body::before {
 body::after {
   content: "";
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background: radial-gradient(120% 90% at 50% 0%, transparent 55%, rgba(30, 60, 130, .10));
+  /* Soft dot-grid so the background reads as patterned rather than flat,
+     without competing with foreground content: low alpha, sits behind every
+     glass panel, and panels' own backdrop-blur further mutes it where they
+     overlap it. */
+  background:
+    radial-gradient(circle, rgba(50, 90, 170, .12) 1.5px, transparent 1.6px),
+    radial-gradient(120% 90% at 50% 0%, transparent 55%, rgba(30, 60, 130, .10));
+  background-size: 28px 28px, auto;
+  background-position: 0 0, 0 0;
 }
 @keyframes drift {
   0%   { transform: translate3d(0, 0, 0) scale(1); }
